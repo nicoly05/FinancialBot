@@ -1,0 +1,486 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
+from flask_sqlalchemy import SQLAlchemy
+import bcrypt
+from datetime import datetime
+from config import Config
+import json
+
+app = Flask(__name__)
+app.config.from_object(Config)
+
+# SQLAlchemy setup
+db = SQLAlchemy(app)
+
+# Custom Jinja filter to parse JSON
+@app.template_filter('from_json')
+def from_json_filter(s):
+    if s:
+        try:
+            return json.loads(s)
+        except:
+            return []
+    return []
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Models
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.LargeBinary, nullable=False)
+    security_question = db.Column(db.String(200), nullable=False)
+    security_answer = db.Column(db.LargeBinary, nullable=False)
+    categories_configured = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+class Session(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    last_active = db.Column(db.DateTime, default=datetime.now)
+    categories_configured = db.Column(db.Boolean, default=False)
+    pending_subcategories = db.Column(db.Text)  # JSON string
+    selected_category_for_sub = db.Column(db.String(200))
+    pending_action = db.Column(db.String(50))
+    pending_amount = db.Column(db.Float)
+    selected_category = db.Column(db.Integer)
+
+class Category(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    subcategories = db.Column(db.Text)  # JSON string
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
+    subcategory = db.Column(db.String(200))
+    amount = db.Column(db.Float, nullable=False)
+    type = db.Column(db.String(50), nullable=False)  # 'expense' or 'income'
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class ChatHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    sender = db.Column(db.String(50), nullable=False)  # 'user' or 'bot'
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+# Routes
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        if user and bcrypt.checkpw(password.encode('utf-8'), user.password):
+            login_user(user)
+            # Create or update session
+            user_session = Session.query.filter_by(user_id=user.id).first()
+            if not user_session:
+                user_session = Session(user_id=user.id, categories_configured=user.categories_configured)
+                db.session.add(user_session)
+            else:
+                user_session.last_active = datetime.now()
+                user_session.categories_configured = user.categories_configured
+            db.session.commit()
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Nome de utilizador ou palavra-passe incorretos', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        security_question = request.form.get('security_question')
+        security_answer = request.form.get('security_answer')
+        
+        if password != confirm_password:
+            flash('As palavras-passe não coincidem', 'error')
+            return render_template('register.html')
+        
+        if User.query.filter_by(username=username).first():
+            flash('Este nome de utilizador já existe', 'error')
+            return render_template('register.html')
+        
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        hashed_answer = bcrypt.hashpw(security_answer.lower().encode('utf-8'), bcrypt.gensalt())
+        
+        user = User(
+            username=username,
+            password=hashed_password,
+            security_question=security_question,
+            security_answer=hashed_answer,
+            categories_configured=False
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        flash('Conta criada com sucesso! Por favor, faz login.', 'success')
+        return redirect(url_for('login'))
+    
+    return render_template('register.html')
+
+@app.route('/recover', methods=['GET', 'POST'])
+def recover():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        security_answer = request.form.get('security_answer')
+        new_password = request.form.get('new_password')
+        
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            flash('Utilizador não encontrado', 'error')
+            return render_template('recover.html')
+        
+        if bcrypt.checkpw(security_answer.lower().encode('utf-8'), user.security_answer):
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            user.password = hashed_password
+            db.session.commit()
+            flash('Palavra-passe redefinida com sucesso!', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('Resposta à pergunta de segurança incorreta', 'error')
+    
+    return render_template('recover.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user_categories = Category.query.filter_by(user_id=current_user.id).all()
+    transactions = Transaction.query.filter_by(user_id=current_user.id).all()
+    
+    # Create category name mapping
+    category_names = {cat.id: cat.name for cat in user_categories}
+    
+    # Calculate totals (sum all transactions regardless of type)
+    category_totals = {}
+    total_spent = 0
+    for cat in user_categories:
+        cat_id = cat.id
+        cat_total = sum(t.amount for t in transactions if t.category_id == cat_id)
+        category_totals[cat_id] = cat_total
+        total_spent += cat_total
+    
+    # Find category with highest spending
+    highest_spending = None
+    max_amount = 0
+    for cat in user_categories:
+        cat_id = cat.id
+        if category_totals.get(cat_id, 0) > max_amount:
+            max_amount = category_totals[cat_id]
+            highest_spending = cat
+    
+    return render_template('dashboard.html', 
+                          categories=user_categories,
+                          transactions=transactions,
+                          category_totals=category_totals,
+                          total_spent=total_spent,
+                          highest_spending=highest_spending,
+                          category_names=category_names)
+
+@app.route('/chat')
+@login_required
+def chat():
+    user_session = Session.query.filter_by(user_id=current_user.id).first()
+    user_categories = Category.query.filter_by(user_id=current_user.id).all()
+    chat_history = ChatHistory.query.filter_by(user_id=current_user.id).order_by(ChatHistory.timestamp.asc()).all()
+    
+    return render_template('chat.html', 
+                          session=user_session,
+                          categories=user_categories,
+                          chat_history=chat_history)
+
+@app.route('/api/chat', methods=['POST'])
+@login_required
+def api_chat():
+    data = request.json
+    user_message = data.get('message', '').strip().lower()
+    
+    # Save user message
+    chat_msg = ChatHistory(
+        user_id=current_user.id,
+        message=user_message,
+        sender='user',
+        timestamp=datetime.now()
+    )
+    db.session.add(chat_msg)
+    
+    # Process message and get bot response
+    response = process_chat_message(user_message, current_user.id)
+    
+    # Save bot response
+    bot_msg = ChatHistory(
+        user_id=current_user.id,
+        message=response,
+        sender='bot',
+        timestamp=datetime.now()
+    )
+    db.session.add(bot_msg)
+    db.session.commit()
+    
+    return jsonify({'response': response})
+
+@app.route('/api/categories', methods=['GET'])
+@login_required
+def api_categories():
+    categories = Category.query.filter_by(user_id=current_user.id).all()
+    return jsonify([{
+        'id': cat.id,
+        'name': cat.name,
+        'subcategories': json.loads(cat.subcategories) if cat.subcategories else []
+    } for cat in categories])
+
+@app.route('/api/dashboard-data', methods=['GET'])
+@login_required
+def api_dashboard_data():
+    user_categories = Category.query.filter_by(user_id=current_user.id).all()
+    transactions = Transaction.query.filter_by(user_id=current_user.id).all()
+    
+    category_totals = {}
+    for cat in user_categories:
+        cat_id = cat.id
+        cat_total = sum(t.amount for t in transactions if t.category_id == cat_id and t.type == 'expense')
+        category_totals[cat.name] = cat_total
+    
+    return jsonify({
+        'categories': [cat.name for cat in user_categories],
+        'totals': category_totals,
+        'total_spent': sum(category_totals.values())
+    })
+
+def process_chat_message(message, user_id):
+    user_session = Session.query.filter_by(user_id=user_id).first()
+    
+    # Check if categories are configured
+    if not user_session or not user_session.categories_configured:
+        return handle_category_configuration(message, user_id)
+    
+    # Handle value modification
+    return handle_value_modification(message, user_id)
+
+def handle_category_configuration(message, user_id):
+    user_session = Session.query.filter_by(user_id=user_id).first()
+    
+    # Initial greeting
+    if message in ['oi', 'olá', 'hello', 'hi']:
+        return """✨ Bem-vinda ao teu bot de cuidados com as tuas finanças! ✨
+Indica as tuas categorias no formato:
+
+1. categoria 1
+2. categoria 2
+3. categoria 3"""
+    
+    # Parse categories
+    if message.startswith('1.') or message.startswith('2.') or message.startswith('3.'):
+        lines = message.split('\n')
+        categories = []
+        for line in lines:
+            if line.strip():
+                parts = line.split('.')
+                if len(parts) >= 2:
+                    categories.append(parts[1].strip())
+        
+        if categories:
+            # Save categories
+            for cat_name in categories:
+                category = Category(
+                    user_id=user_id,
+                    name=cat_name,
+                    subcategories=json.dumps([])
+                )
+                db.session.add(category)
+            
+            if not user_session:
+                user_session = Session(user_id=user_id)
+                db.session.add(user_session)
+            
+            user_session.pending_subcategories = json.dumps(categories)
+            db.session.commit()
+            
+            return "Desejas adicionar subcategorias? Se sim indica o número da categoria."
+    
+    # Handle subcategory selection or skip
+    if user_session and user_session.pending_subcategories:
+        # Check if user wants to skip subcategories
+        if message in ['não', 'nao', 'no', 'n']:
+            user_session.pending_subcategories = None
+            user_session.selected_category_for_sub = None
+            # Mark categories as configured
+            user_session.categories_configured = True
+            user = User.query.get(user_id)
+            if user:
+                user.categories_configured = True
+            db.session.commit()
+            return "✅ Configuração guardada! Agora podes adicionar ou remover valores. Escreve \"adicionar\" ou \"remover\" seguido do valor em €. Exemplo: adicionar 400"
+        
+        # Handle subcategory selection
+        if message.isdigit():
+            cat_index = int(message) - 1
+            pending_cats = json.loads(user_session.pending_subcategories)
+            
+            if 0 <= cat_index < len(pending_cats):
+                selected_cat = pending_cats[cat_index]
+                user_session.selected_category_for_sub = selected_cat
+                db.session.commit()
+                return f"Indica as subcategorias para \"{selected_cat}\"...\n\n1. subcategoria 1\n2. subcategoria 2\n3. subcategoria 3"
+    
+    # Parse subcategories
+    if (message.startswith('1.') or message.startswith('2.') or message.startswith('3.')) and user_session and user_session.selected_category_for_sub:
+        lines = message.split('\n')
+        subcategories = []
+        for line in lines:
+            if line.strip():
+                parts = line.split('.')
+                if len(parts) >= 2:
+                    subcategories.append(parts[1].strip())
+        
+        if subcategories:
+            cat_name = user_session.selected_category_for_sub
+            category = Category.query.filter_by(user_id=user_id, name=cat_name).first()
+            if category:
+                category.subcategories = json.dumps(subcategories)
+            
+            user_session.selected_category_for_sub = None
+            user_session.categories_configured = True
+            user = User.query.get(user_id)
+            if user:
+                user.categories_configured = True
+            db.session.commit()
+            
+            return "✅ Configuração guardada! Agora podes adicionar ou remover valores. Escreve \"adicionar\" ou \"remover\" seguido do valor em €. Exemplo: adicionar 400"
+    
+    return "Não entendi. Por favor, segue as instruções anteriores."
+
+def handle_value_modification(message, user_id):
+    user_session = Session.query.filter_by(user_id=user_id).first()
+    
+    # Check for add/remove command
+    if message.startswith('adicionar'):
+        try:
+            amount = float(message.split()[1])
+            user_session.pending_action = 'add'
+            user_session.pending_amount = amount
+            db.session.commit()
+            
+            user_categories = Category.query.filter_by(user_id=user_id).all()
+            cat_list = "\n".join([f"{i+1}. {cat.name}" for i, cat in enumerate(user_categories)])
+            return f"Em que categoria queres adicionar {amount}€?\n\n{cat_list}"
+        except (IndexError, ValueError):
+            return "Formato incorreto. Exemplo: adicionar 400"
+    
+    if message.startswith('remover'):
+        try:
+            amount = float(message.split()[1])
+            user_session.pending_action = 'remove'
+            user_session.pending_amount = amount
+            db.session.commit()
+            
+            user_categories = Category.query.filter_by(user_id=user_id).all()
+            cat_list = "\n".join([f"{i+1}. {cat.name}" for i, cat in enumerate(user_categories)])
+            return f"Em que categoria queres remover {amount}€?\n\n{cat_list}"
+        except (IndexError, ValueError):
+            return "Formato incorreto. Exemplo: remover 400"
+    
+    # Handle category selection
+    if message.isdigit() and user_session and user_session.pending_action:
+        cat_index = int(message) - 1
+        user_categories = Category.query.filter_by(user_id=user_id).all()
+        
+        if 0 <= cat_index < len(user_categories):
+            selected_cat = user_categories[cat_index]
+            action = user_session.pending_action
+            amount = user_session.pending_amount
+            
+            # Check for subcategories
+            subcategories = json.loads(selected_cat.subcategories) if selected_cat.subcategories else []
+            if subcategories:
+                sub_list = "\n".join([f"{i+1}. {sub}" for i, sub in enumerate(subcategories)])
+                user_session.selected_category = selected_cat.id
+                db.session.commit()
+                return f"A categoria {selected_cat.name} tem subcategorias: {', '.join(subcategories)}.\nQual delas queres alterar?\n\n{sub_list}"
+            
+            # No subcategories, add transaction directly
+            transaction_type = 'income' if action == 'add' else 'expense'
+            # Use negative amount for remove action
+            transaction_amount = amount if action == 'add' else -amount
+            transaction = Transaction(
+                user_id=user_id,
+                category_id=selected_cat.id,
+                subcategory=None,
+                amount=transaction_amount,
+                type=transaction_type,
+                timestamp=datetime.now()
+            )
+            db.session.add(transaction)
+            
+            user_session.pending_action = None
+            user_session.pending_amount = None
+            db.session.commit()
+            
+            return f"✅ {amount}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_cat.name}!"
+    
+    # Handle subcategory selection
+    if message.isdigit() and user_session and user_session.selected_category:
+        cat = Category.query.get(user_session.selected_category)
+        if cat:
+            subcategories = json.loads(cat.subcategories) if cat.subcategories else []
+            if subcategories:
+                sub_index = int(message) - 1
+                if 0 <= sub_index < len(subcategories):
+                    selected_sub = subcategories[sub_index]
+                    action = user_session.pending_action
+                    amount = user_session.pending_amount
+                    
+                    transaction_type = 'income' if action == 'add' else 'expense'
+                    # Use negative amount for remove action
+                    transaction_amount = amount if action == 'add' else -amount
+                    transaction = Transaction(
+                        user_id=user_id,
+                        category_id=cat.id,
+                        subcategory=selected_sub,
+                        amount=transaction_amount,
+                        type=transaction_type,
+                        timestamp=datetime.now()
+                    )
+                    db.session.add(transaction)
+                    
+                    user_session.pending_action = None
+                    user_session.pending_amount = None
+                    user_session.selected_category = None
+                    db.session.commit()
+                    
+                    return f"✅ {amount}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_sub} ({cat.name})!"
+    
+    return "Comando não reconhecido. Escreve \"adicionar\" ou \"remover\" seguido do valor em €."
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, port=5001)
