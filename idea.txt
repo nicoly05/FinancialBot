@@ -1,0 +1,134 @@
+A aplicação terá **duas áreas principais**:
+
+1. **Dashboard financeiro com gráficos e análises**
+2. **Chat inteligente para manipulação dos dados financeiros**
+
+Abaixo está a descrição detalhada para implementação.
+
+## **1. Sistema de Autenticação e Contas**
+
+A app deve ter um sistema de criação e recuperação de conta:
+
+### **Criação de conta**
+
+- Campos obrigatórios:
+    - Nome de utilizador
+    - Palavra‑passe
+    - Confirmar a palavra-passe
+- Perguntas de segurança (o utilizador escolhe uma obrigatória):
+    - “Qual o nome do teu cão?”
+    - “Qual a tua cor favorita?”
+    - “Qual o nome da tua avó materna?”
+
+### **Recuperação de senha**
+
+- O utilizador escolhe a pergunta de segurança.
+- Se responder corretamente, pode redefinir a palavra‑passe.
+
+## 📊 **2. Dashboard Financeiro (Gráficos e Análises)**
+
+A área de gráficos deve mostrar:
+
+- Todas as categorias principais do utilizador
+- Valores atuais por categoria
+- Total gasto por mês
+- Comparações entre meses
+- Identificação automática da categoria com maior gasto
+- Gráficos recomendados (opções de botoes para verificar em cada um dos modelos):
+    - Pizza (distribuição por categoria)
+    - Linha (evolução mensal)
+    - Barras (comparação entre categorias)
+    - Indicadores (saldo, total investido, total gasto)
+
+O dashboard deve atualizar automaticamente sempre que o utilizador altera valores via chat.
+
+## **3. Chat Inteligente (Bot Financeiro)**
+
+O chat é responsável por **configurar categorias**, **subcategorias** e **alterar valores** no banco de dados financeiro.
+
+### **Fluxo inicial do chat**
+
+Exemplo:
+
+**Tu:** oi
+**Bot:**  
+✨ Bem‑vinda ao teu bot de cuidados com as tuas finanças! ✨
+Indica as tuas categorias no formato:
+
+1. categoria 1
+2. categoria 2
+3. categoria 3
+
+**Tu:**
+
+1. futuro
+2. viagens
+3. investimento
+
+**Bot:**  
+Desejas adicionar subcategorias? Se sim indica o número.
+
+**Tu:** 3
+**Bot:** Indica as subcategorias para “investimento”...
+
+**Tu:**
+
+1. presente
+2. alimentação
+3. roupas e acessórios
+
+**Bot:**  
+✅ Configuração guardada!
+
+## 🔄 **4. Fluxo de Alteração de Valores**
+
+Após a configuração inicial, o bot deve instruir:
+
+> “Escreve **adicionar** ou **remover** seguido do valor em €.
+Exemplo: *adicionar 400*”
+> 
+
+### **Exemplo de fluxo**
+
+**Tu:** adicionar 400
+**Bot:** Em que categoria queres adicionar 400€?
+
+Se a categoria tiver subcategorias:
+
+**Bot:**  
+“A categoria *Investimentos* tem subcategorias: presente, alimentação, roupas e acessórios.
+Qual delas queres alterar?”
+
+O bot deve:
+
+- Identificar automaticamente se o utilizador está a falar de uma categoria ou subcategoria
+- Atualizar o valor no banco de dados
+- Registar o histórico da sessão
+- Manter contexto entre mensagens
+- Atualizar o dashboard em tempo real
+
+## **5. Persistência e Sessões**
+
+Cada utilizador deve ter:
+
+- Sessão própria
+- Histórico de chat
+- Categorias e subcategorias guardadas
+- Valores financeiros persistentes
+- Contexto mantido entre mensagens (ex.: se o utilizador diz “adicionar 200”, o bot deve lembrar que está a perguntar pela categoria)
+
+## **6. Interface do Site**
+
+O site deve ser:
+
+- Moderno
+- Minimalista
+- Responsivo
+- Com navegação clara entre:
+    - Dashboard
+    - Chat
+    - Perfil / Configurações
+
+## 7. Frameworks
+
+Devemos usar python e mongo DB

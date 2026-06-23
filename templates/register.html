@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Registo - FinancialBot{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card p-4">
+            <div class="text-center mb-4">
+                <i class="bi bi-person-plus" style="font-size: 3rem; color: var(--primary-color);"></i>
+                <h2 class="mt-3">Criar Conta</h2>
+                <p class="text-muted">Junta-te ao FinancialBot</p>
+            </div>
+            
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Nome de utilizador</label>
+                    <input type="text" class="form-control" id="username" name="username" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="password" class="form-label">Palavra-passe</label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="confirm_password" class="form-label">Confirmar palavra-passe</label>
+                    <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="security_question" class="form-label">Pergunta de segurança</label>
+                    <select class="form-control" id="security_question" name="security_question" required>
+                        <option value="">Escolhe uma pergunta...</option>
+                        <option value="Qual o nome do teu cão?">Qual o nome do teu cão?</option>
+                        <option value="Qual a tua cor favorita?">Qual a tua cor favorita?</option>
+                        <option value="Qual o nome da tua avó materna?">Qual o nome da tua avó materna?</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="security_answer" class="form-label">Resposta de segurança</label>
+                    <input type="text" class="form-control" id="security_answer" name="security_answer" required>
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100 mb-3">Criar Conta</button>
+            </form>
+            
+            <div class="text-center">
+                <p>Já tens conta? <a href="{{ url_for('login') }}">Faz login</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
