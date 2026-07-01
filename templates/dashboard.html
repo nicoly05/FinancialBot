@@ -54,13 +54,6 @@
             <i class="bi bi-tags position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card stat-card p-4">
-            <div class="stat-label">Transações</div>
-            <div class="stat-value">{{ transactions|length }}</div>
-            <i class="bi bi-receipt position-absolute top-0 end-0 m-3 text-muted"></i>
-        </div>
-    </div>
 </div>
 
 <!-- Chart Type Selector -->
@@ -97,63 +90,114 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card p-4">
-            <h4><i class="bi bi-tags"></i> Categorias</h4>
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-tags"></i> Categorias</h4>
+                <button class="btn btn-sm btn-outline-primary" onclick="openCategoryModal()">
+                    <i class="bi bi-pencil"></i> Editar
+                </button>
+            </div>
             <div class="mt-3">
                 {% for category in categories %}
                     {% set subcats = category.subcategories|from_json %}
-                    <span class="category-badge" style="background-color: {{ ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][loop.index0 % 6] }}20; color: {{ ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][loop.index0 % 6] }};">
-                        {{ category.name }}
+                    <span class="category-badge" style="background-color: {{ category.color }}20; color: {{ category.color }}; cursor: pointer;" onclick="openSubcategoryModal({{ category.id }}, '{{ category.name }}')">
+                        {{ category.emoji }} {{ category.name }}
                         {% if subcats %}
                             <small>({{ subcats|length }} subcategorias)</small>
                         {% endif %}
                     </span>
                 {% endfor %}
                 {% if not categories %}
-                    <p class="text-muted">Sem categorias configuradas. Vai ao chat para configurar!</p>
+                    <p class="text-muted">Clica em "Editar" para adicionar categorias!</p>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<!-- Recent Transactions -->
-<div class="row">
-    <div class="col-12">
-        <div class="card p-4">
-            <h4><i class="bi bi-clock-history"></i> Transações Recentes</h4>
-            <div class="table-responsive mt-3">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Categoria</th>
-                            <th>Subcategoria</th>
-                            <th>Valor</th>
-                            <th>Tipo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for transaction in transactions[-10:] %}
-                        <tr>
-                            <td>{{ transaction.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
-                            <td>{{ category_names.get(transaction.category_id, 'N/A') }}</td>
-                            <td>{{ transaction.subcategory or '-' }}</td>
-                            <td>€{{ "%.2f"|format(transaction.amount) }}</td>
-                            <td>
-                                {% if transaction.type == 'expense' %}
-                                    <span class="badge bg-danger">Despesa</span>
-                                {% else %}
-                                    <span class="badge bg-success">Ganho</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center text-muted">Sem transações</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+<!-- Category Edit Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Categorias</h5>
+                <button type="button" class="btn-close" onclick="closeCategoryModal()"></button>
+            </div>
+            <div class="modal-body">
+                <div id="categoryList">
+                    <!-- Categories will be loaded here -->
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary w-100 btn-lg" onclick="showCategoryForm()">
+                        <i class="bi bi-plus"></i> Adicionar
+                    </button>
+                </div>
+                <div id="categoryForm" class="mt-3" style="display: none;">
+                    <h6 id="categoryFormTitle">Nova Categoria</h6>
+                    <input type="hidden" id="editCategoryId">
+                    <div class="mb-2">
+                        <input type="text" class="form-control" id="newCategoryName" placeholder="Nome da categoria">
+                    </div>
+                    <div class="mb-2">
+                        <input type="text" class="form-control" id="newCategoryEmoji" placeholder="Emoji (ex: 📁)" maxlength="2">
+                    </div>
+                    <div class="mb-2">
+                        <input type="color" class="form-control form-control-color" id="newCategoryColor" value="#3b82f6">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-secondary flex-1" onclick="hideCategoryForm()">Cancelar</button>
+                        <button class="btn btn-success flex-1" id="saveCategoryBtn" onclick="saveCategory()">
+                            <i class="bi bi-check"></i> Guardar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subcategory Modal -->
+<div class="modal fade" id="subcategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Subcategorias: <span id="subcategoryCategoryName"></span></h5>
+                <button type="button" class="btn-close" onclick="closeSubcategoryModal()"></button>
+            </div>
+            <div class="modal-body">
+                <div id="subcategoryList">
+                    <!-- Subcategories will be loaded here -->
+                </div>
+                <div class="mt-3">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="newSubcategoryName" placeholder="Nova subcategoria">
+                        <button class="btn btn-success" onclick="addSubcategory()">
+                            <i class="bi bi-plus"></i> Adicionar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Move Money Modal -->
+<div class="modal fade" id="moveMoneyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mover Dinheiro</h5>
+                <button type="button" class="btn-close" onclick="closeMoveMoneyModal()"></button>
+            </div>
+            <div class="modal-body">
+                <p>A categoria tem dinheiro associado. Para onde queres mover?</p>
+                <select class="form-select" id="targetCategory">
+                    <!-- Target categories will be loaded here -->
+                </select>
+                <input type="hidden" id="categoryToDelete">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeleteWithMove()">Mover e Remover</button>
             </div>
         </div>
     </div>
@@ -166,9 +210,9 @@ let mainChart = null;
 const categoryNames = {{ categories|map(attribute='name')|list|tojson }};
 const categoryTotals = {{ category_totals|tojson }};
 const categoryIds = {{ categories|map(attribute='id')|list|tojson }};
+const categoryColors = {{ categories|map(attribute='color')|list|tojson }};
 
 const dataValues = categoryIds.map(id => categoryTotals[id] || 0);
-const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function showChart(type) {
     const ctx = document.getElementById('mainChart').getContext('2d');
@@ -184,8 +228,8 @@ function showChart(type) {
             datasets: [{
                 label: 'Valor (€)',
                 data: dataValues,
-                backgroundColor: colors,
-                borderColor: colors,
+                backgroundColor: categoryColors,
+                borderColor: categoryColors,
                 borderWidth: 2
             }]
         },
@@ -219,5 +263,285 @@ showChart('pie');
 setInterval(() => {
     location.reload();
 }, 30000);
+
+// Category Management
+const allCategories = {{ categories_json|tojson }};
+let currentCategoryId = null;
+
+function closeCategoryModal() {
+    document.getElementById('categoryModal').style.display = 'none';
+    document.getElementById('categoryModal').classList.remove('show');
+    document.body.classList.remove('modal-open');
+}
+
+function showCategoryForm() {
+    document.getElementById('categoryForm').style.display = 'block';
+    document.getElementById('categoryList').style.display = 'none';
+    document.querySelector('.mt-3 > .btn-primary').style.display = 'none';
+}
+
+function hideCategoryForm() {
+    document.getElementById('categoryForm').style.display = 'none';
+    document.getElementById('categoryList').style.display = 'block';
+    document.querySelector('.mt-3 > .btn-primary').style.display = 'block';
+    resetCategoryForm();
+}
+
+function openCategoryModal() {
+    hideCategoryForm();
+    document.getElementById('categoryModal').style.display = 'block';
+    document.getElementById('categoryModal').classList.add('show');
+    document.body.classList.add('modal-open');
+    loadCategories();
+}
+
+function openNewCategoryModal() {
+    resetCategoryForm();
+    openCategoryModal();
+}
+
+function closeSubcategoryModal() {
+    document.getElementById('subcategoryModal').style.display = 'none';
+    document.getElementById('subcategoryModal').classList.remove('show');
+    document.body.classList.remove('modal-open');
+    currentCategoryId = null;
+}
+
+function openSubcategoryModal(categoryId, categoryName) {
+    currentCategoryId = categoryId;
+    document.getElementById('subcategoryCategoryName').textContent = categoryName;
+    document.getElementById('subcategoryModal').style.display = 'block';
+    document.getElementById('subcategoryModal').classList.add('show');
+    document.body.classList.add('modal-open');
+    loadSubcategories();
+}
+
+function closeMoveMoneyModal() {
+    document.getElementById('moveMoneyModal').style.display = 'none';
+    document.getElementById('moveMoneyModal').classList.remove('show');
+    document.body.classList.remove('modal-open');
+}
+
+function loadCategories() {
+    const categoryList = document.getElementById('categoryList');
+    categoryList.innerHTML = '';
+    
+    allCategories.forEach((cat, index) => {
+        const div = document.createElement('div');
+        div.className = 'd-flex justify-content-between align-items-center mb-2 p-2 border rounded';
+        div.innerHTML = `
+            <span>${cat.emoji} ${cat.name}</span>
+            <div>
+                <button class="btn btn-sm btn-info me-1" onclick="openSubcategoryModal(${cat.id}, '${cat.name}')">
+                    <i class="bi bi-list"></i>
+                </button>
+                <button class="btn btn-sm btn-primary me-1" onclick="editCategory(${cat.id})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteCategory(${cat.id}, '${cat.name}')">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        `;
+        categoryList.appendChild(div);
+    });
+}
+
+function editCategory(id) {
+    const cat = allCategories.find(c => c.id === id);
+    if (cat) {
+        document.getElementById('editCategoryId').value = cat.id;
+        document.getElementById('newCategoryName').value = cat.name;
+        document.getElementById('newCategoryEmoji').value = cat.emoji;
+        document.getElementById('newCategoryColor').value = cat.color;
+        document.getElementById('categoryFormTitle').textContent = 'Editar Categoria';
+        document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-check"></i> Guardar';
+        showCategoryForm();
+    }
+}
+
+function resetCategoryForm() {
+    document.getElementById('editCategoryId').value = '';
+    document.getElementById('newCategoryName').value = '';
+    document.getElementById('newCategoryEmoji').value = '';
+    document.getElementById('newCategoryColor').value = '#3b82f6';
+    document.getElementById('categoryFormTitle').textContent = 'Nova Categoria';
+    document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-plus"></i> Adicionar';
+}
+
+async function saveCategory() {
+    const editId = document.getElementById('editCategoryId').value;
+    const name = document.getElementById('newCategoryName').value.trim();
+    const emoji = document.getElementById('newCategoryEmoji').value.trim() || '📁';
+    const color = document.getElementById('newCategoryColor').value || '#3b82f6';
+    
+    if (!name) return;
+    
+    try {
+        let response;
+        if (editId) {
+            // Update existing category
+            response = await fetch(`/api/category/${editId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, emoji, color })
+            });
+        } else {
+            // Add new category
+            response = await fetch('/api/category', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, emoji, color })
+            });
+        }
+        
+        if (response.ok) {
+            resetCategoryForm();
+            hideCategoryForm();
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error saving category:', error);
+    }
+}
+
+async function addCategory() {
+    resetCategoryForm();
+    saveCategory();
+}
+
+async function deleteCategory(id, name) {
+    try {
+        const response = await fetch(`/api/category/${id}/check`, {
+            method: 'GET'
+        });
+        
+        const data = await response.json();
+        
+        if (data.has_transactions) {
+            // Show move money modal
+            document.getElementById('categoryToDelete').value = id;
+            const select = document.getElementById('targetCategory');
+            select.innerHTML = '';
+            
+            allCategories.forEach(cat => {
+                if (cat.id !== id) {
+                    const option = document.createElement('option');
+                    option.value = cat.id;
+                    option.textContent = cat.name;
+                    select.appendChild(option);
+                }
+            });
+            
+            bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
+            new bootstrap.Modal(document.getElementById('moveMoneyModal')).show();
+        } else {
+            // Delete directly
+            if (confirm(`Tem a certeza que deseja remover "${name}"?`)) {
+                await deleteCategoryRequest(id);
+            }
+        }
+    } catch (error) {
+        console.error('Error checking category:', error);
+    }
+}
+
+async function confirmDeleteWithMove() {
+    const categoryId = document.getElementById('categoryToDelete').value;
+    const targetId = document.getElementById('targetCategory').value;
+    
+    try {
+        const response = await fetch(`/api/category/${categoryId}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_id: targetId })
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('moveMoneyModal')).hide();
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error moving transactions:', error);
+    }
+}
+
+async function deleteCategoryRequest(id) {
+    try {
+        const response = await fetch(`/api/category/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error deleting category:', error);
+    }
+}
+
+function loadSubcategories() {
+    const category = allCategories.find(cat => cat.id === currentCategoryId);
+    if (!category) return;
+    
+    const subcategoryList = document.getElementById('subcategoryList');
+    subcategoryList.innerHTML = '';
+    
+    // Note: subcategories are stored as JSON string in the database
+    // We need to fetch them from the API
+    fetch(`/api/category/${currentCategoryId}`)
+        .then(res => res.json())
+        .then(data => {
+            const subcategories = data.subcategories || [];
+            subcategories.forEach((sub, index) => {
+                const div = document.createElement('div');
+                div.className = 'd-flex justify-content-between align-items-center mb-2 p-2 border rounded';
+                div.innerHTML = `
+                    <span>${sub}</span>
+                    <button class="btn btn-sm btn-danger" onclick="deleteSubcategory(${index})">
+                        <i class="bi bi-x"></i>
+                    </button>
+                `;
+                subcategoryList.appendChild(div);
+            });
+        })
+        .catch(err => console.error('Error loading subcategories:', err));
+}
+
+async function addSubcategory() {
+    const name = document.getElementById('newSubcategoryName').value.trim();
+    if (!name || !currentCategoryId) return;
+    
+    try {
+        const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        
+        if (response.ok) {
+            document.getElementById('newSubcategoryName').value = '';
+            loadSubcategories();
+        }
+    } catch (error) {
+        console.error('Error adding subcategory:', error);
+    }
+}
+
+async function deleteSubcategory(index) {
+    try {
+        const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index })
+        });
+        
+        if (response.ok) {
+            loadSubcategories();
+        }
+    } catch (error) {
+        console.error('Error deleting subcategory:', error);
+    }
+}
 </script>
 {% endblock %}
