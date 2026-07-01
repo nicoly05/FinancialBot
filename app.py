@@ -52,6 +52,8 @@ class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(200), nullable=False)
+    emoji = db.Column(db.String(10), default='📁')
+    color = db.Column(db.String(7), default='#3b82f6')
     subcategories = db.Column(db.Text)  # JSON string
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -203,7 +205,8 @@ def dashboard():
                           category_totals=category_totals,
                           total_spent=total_spent,
                           highest_spending=highest_spending,
-                          category_names=category_names)
+                          category_names=category_names,
+                          categories_json=[{'id': cat.id, 'name': cat.name, 'emoji': cat.emoji, 'color': cat.color} for cat in user_categories])
 
 @app.route('/chat')
 @login_required
@@ -257,6 +260,173 @@ def api_categories():
         'subcategories': json.loads(cat.subcategories) if cat.subcategories else []
     } for cat in categories])
 
+@app.route('/api/category', methods=['POST'])
+@login_required
+def api_add_category():
+    data = request.get_json()
+    name = data.get('name')
+    emoji = data.get('emoji', '📁')
+    color = data.get('color', '#3b82f6')
+    
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    # Check if category already exists
+    existing = Category.query.filter_by(user_id=current_user.id, name=name).first()
+    if existing:
+        return jsonify({'error': 'Category already exists'}), 400
+    
+    category = Category(user_id=current_user.id, name=name, emoji=emoji, color=color, subcategories=None)
+    db.session.add(category)
+    
+    # Update session to mark categories as configured
+    user_session = Session.query.filter_by(user_id=current_user.id).first()
+    if user_session:
+        user_session.categories_configured = True
+    else:
+        user_session = Session(user_id=current_user.id, categories_configured=True)
+        db.session.add(user_session)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'id': category.id})
+
+@app.route('/api/category/<int:category_id>/check', methods=['GET'])
+@login_required
+def api_check_category(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    transactions = Transaction.query.filter_by(category_id=category_id).first()
+    has_transactions = transactions is not None
+    
+    return jsonify({'has_transactions': has_transactions})
+
+@app.route('/api/category/<int:category_id>/move', methods=['POST'])
+@login_required
+def api_move_transactions(category_id):
+    data = request.get_json()
+    target_id = data.get('target_id')
+    
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    target = Category.query.get(target_id)
+    if not target or target.user_id != current_user.id:
+        return jsonify({'error': 'Target category not found'}), 404
+    
+    # Move all transactions to target category
+    transactions = Transaction.query.filter_by(category_id=category_id).all()
+    for transaction in transactions:
+        transaction.category_id = target_id
+    
+    # Delete the category
+    db.session.delete(category)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/category/<int:category_id>', methods=['GET'])
+@login_required
+def api_get_category(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    return jsonify({
+        'id': category.id,
+        'name': category.name,
+        'emoji': category.emoji,
+        'color': category.color,
+        'subcategories': json.loads(category.subcategories) if category.subcategories else []
+    })
+
+@app.route('/api/category/<int:category_id>', methods=['PUT'])
+@login_required
+def api_update_category(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    data = request.get_json()
+    name = data.get('name')
+    emoji = data.get('emoji', '📁')
+    color = data.get('color', '#3b82f6')
+    
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    # Check if name already exists for another category
+    existing = Category.query.filter_by(user_id=current_user.id, name=name).first()
+    if existing and existing.id != category_id:
+        return jsonify({'error': 'Category name already exists'}), 400
+    
+    category.name = name
+    category.emoji = emoji
+    category.color = color
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/category/<int:category_id>', methods=['DELETE'])
+@login_required
+def api_delete_category(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    # Delete the category
+    db.session.delete(category)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/category/<int:category_id>/subcategory', methods=['POST'])
+@login_required
+def api_add_subcategory(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    data = request.get_json()
+    name = data.get('name')
+    
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    subcategories = json.loads(category.subcategories) if category.subcategories else []
+    if name in subcategories:
+        return jsonify({'error': 'Subcategory already exists'}), 400
+    
+    subcategories.append(name)
+    category.subcategories = json.dumps(subcategories)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/category/<int:category_id>/subcategory', methods=['DELETE'])
+@login_required
+def api_delete_subcategory(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+    
+    data = request.get_json()
+    index = data.get('index')
+    
+    if index is None:
+        return jsonify({'error': 'Index is required'}), 400
+    
+    subcategories = json.loads(category.subcategories) if category.subcategories else []
+    if 0 <= index < len(subcategories):
+        subcategories.pop(index)
+        category.subcategories = json.dumps(subcategories)
+        db.session.commit()
+    
+    return jsonify({'success': True})
+
 @app.route('/api/dashboard-data', methods=['GET'])
 @login_required
 def api_dashboard_data():
@@ -276,17 +446,27 @@ def api_dashboard_data():
     })
 
 def process_chat_message(message, user_id):
-    user_session = Session.query.filter_by(user_id=user_id).first()
-    
-    # Check if categories are configured
-    if not user_session or not user_session.categories_configured:
-        return handle_category_configuration(message, user_id)
+    # Check if user has categories configured
+    user_categories = Category.query.filter_by(user_id=user_id).all()
+    if not user_categories:
+        return "Primeiro configura as tuas categorias no dashboard! Clica em 'Editar' na secção de categorias."
     
     # Handle value modification
     return handle_value_modification(message, user_id)
 
 def handle_category_configuration(message, user_id):
     user_session = Session.query.filter_by(user_id=user_id).first()
+    
+    # Check if user already has categories configured
+    existing_categories = Category.query.filter_by(user_id=user_id).all()
+    if existing_categories:
+        # Mark session as configured
+        if not user_session:
+            user_session = Session(user_id=user_id)
+            db.session.add(user_session)
+        user_session.categories_configured = True
+        db.session.commit()
+        return "Já tens categorias configuradas! Podes adicionar ou remover valores. Escreve \"adicionar\" ou \"remover\" seguido do valor em €. Exemplo: adicionar 400"
     
     # Initial greeting
     if message in ['oi', 'olá', 'hello', 'hi']:
