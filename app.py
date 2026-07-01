@@ -12,6 +12,14 @@ app.config.from_object(Config)
 # SQLAlchemy setup
 db = SQLAlchemy(app)
 
+
+def init_database():
+    with app.app_context():
+        db.create_all()
+
+
+init_database()
+
 # Custom Jinja filter to parse JSON
 @app.template_filter('from_json')
 def from_json_filter(s):
@@ -75,6 +83,7 @@ class ChatHistory(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
+    init_database()
     return db.session.get(User, int(user_id))
 
 # Routes
@@ -661,6 +670,4 @@ def handle_value_modification(message, user_id):
     return "Comando não reconhecido. Escreve \"adicionar\" ou \"remover\" seguido do valor em €."
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True, port=5001)
