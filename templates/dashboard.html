@@ -83,6 +83,12 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0" id="chartTitle">Todas as categorias</h5>
+                <button class="btn btn-sm btn-outline-secondary" id="backToOverviewBtn" style="display: none;" onclick="showOverviewChart()">
+                    <i class="bi bi-arrow-left"></i> Voltar às categorias
+                </button>
+            </div>
             <div class="chart-container">
                 <canvas id="mainChart"></canvas>
             </div>
@@ -100,14 +106,15 @@
                     <i class="bi bi-pencil"></i> Editar
                 </button>
             </div>
-            <div class="mt-3">
+            <p class="text-muted small mb-2 mt-2">Clica numa categoria para ver a divisão por subcategoria no gráfico acima.</p>
+            <div class="mt-1">
                 {% for category in categories %}
                     {% set subcats = category.subcategories|from_json %}
                     <span class="category-badge"
                           data-category-id="{{ category.id }}"
                           data-category-name="{{ category.name }}"
                           data-color="{{ category.color }}"
-                          onclick="openSubcategoryModalFromBadge(this)">
+                          onclick="showCategoryBreakdown(this)">
                         {{ category.emoji }} {{ category.name }}
                         {% if subcats %}
                             <small>({{ subcats|length }} subcategorias)</small>
@@ -138,12 +145,6 @@
                             <div class="d-flex justify-content-between align-items-center p-2 border rounded">
                                 <span>{{ category.emoji }} {{ category.name }}</span>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <button class="btn btn-sm btn-outline-info" data-action="subcategory-category"
-                                            data-category-id="{{ category.id }}"
-                                            data-category-name="{{ category.name }}"
-                                            onclick="openSubcategoryModalFromButton(this)">
-                                        <i class="bi bi-list"></i> Subcategorias
-                                    </button>
                                     <button class="btn btn-sm btn-outline-primary" data-action="edit-category"
                                             data-category-id="{{ category.id }}"
                                             data-category-name="{{ category.name }}"
@@ -277,6 +278,12 @@
     let mainChart = null;
     let currentCategoryId = null;
     let tempSubcategories = [];
+    let currentChartType = 'pie';
+
+    // Dados atualmente exibidos no gráfico principal (começa na visão geral de categorias)
+    let currentLabels = categoryNames;
+    let currentValues = dataValues;
+    let currentColors = categoryColors;
 
     // Aplica as cores das categorias (antes vinham via style="" com Jinja embutido)
     document.querySelectorAll('.category-badge[data-color]').forEach(el => {
@@ -284,7 +291,8 @@
         el.style.color = '#333';
     });
 
-    function showChart(type, btn) {
+    function renderChart(type) {
+        currentChartType = type;
         const ctx = document.getElementById('mainChart').getContext('2d');
 
         if (mainChart) {
@@ -294,12 +302,12 @@
         const config = {
             type: type,
             data: {
-                labels: categoryNames,
+                labels: currentLabels,
                 datasets: [{
                     label: 'Valor (€)',
-                    data: dataValues,
-                    backgroundColor: categoryColors,
-                    borderColor: categoryColors,
+                    data: currentValues,
+                    backgroundColor: currentColors,
+                    borderColor: currentColors,
                     borderWidth: 2
                 }]
             },
@@ -320,12 +328,79 @@
         }
 
         mainChart = new Chart(ctx, config);
+    }
 
+    function showChart(type, btn) {
+        renderChart(type);
         document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
         if (btn) btn.classList.add('active');
     }
 
-    // Inicializa com o gráfico de pizza
+    // Gera variações de tom a partir da cor da categoria, para diferenciar as subcategorias no gráfico
+    function generateColorShades(baseColor, count) {
+        const hex = (baseColor || '#3b82f6').replace('#', '');
+        const r = parseInt(hex.substring(0, 2), 16) || 59;
+        const g = parseInt(hex.substring(2, 4), 16) || 130;
+        const b = parseInt(hex.substring(4, 6), 16) || 246;
+
+        const shades = [];
+        for (let i = 0; i < count; i++) {
+            const factor = count === 1 ? 1 : 0.55 + (0.45 * i) / (count - 1);
+            const nr = Math.min(255, Math.round(r * factor + (255 - r) * (1 - factor) * 0.15));
+            const ng = Math.min(255, Math.round(g * factor + (255 - g) * (1 - factor) * 0.15));
+            const nb = Math.min(255, Math.round(b * factor + (255 - b) * (1 - factor) * 0.15));
+            shades.push(`rgb(${nr}, ${ng}, ${nb})`);
+        }
+        return shades;
+    }
+
+    async function showCategoryBreakdown(element) {
+        const id = element.dataset.categoryId;
+        const name = element.dataset.categoryName;
+
+        try {
+            const response = await fetch(`/api/category/${id}/subcategory-totals`);
+            if (!response.ok) return;
+            const data = await response.json();
+
+            const labels = data.subcategories.map(s => s.name);
+            const values = data.subcategories.map(s => s.total);
+
+            if (data.no_subcategory_total) {
+                labels.push('Sem subcategoria');
+                values.push(data.no_subcategory_total);
+            }
+
+            if (labels.length === 0) {
+                alert(`"${name}" ainda não tem subcategorias com valores registados.`);
+                return;
+            }
+
+            currentLabels = labels;
+            currentValues = values;
+            currentColors = generateColorShades(data.category_color, labels.length);
+
+            document.getElementById('chartTitle').textContent = `Subcategorias de "${name}"`;
+            document.getElementById('backToOverviewBtn').style.display = 'inline-block';
+
+            renderChart(currentChartType);
+        } catch (error) {
+            console.error('Error loading subcategory totals:', error);
+        }
+    }
+
+    function showOverviewChart() {
+        currentLabels = categoryNames;
+        currentValues = dataValues;
+        currentColors = categoryColors;
+
+        document.getElementById('chartTitle').textContent = 'Todas as categorias';
+        document.getElementById('backToOverviewBtn').style.display = 'none';
+
+        renderChart(currentChartType);
+    }
+
+    // Inicializa com o gráfico de pizza (visão geral)
     showChart('pie', document.querySelector('.chart-btn[data-chart-type="pie"]'));
 
     // Auto-refresh do dashboard a cada 30 segundos
@@ -650,7 +725,8 @@
     window.saveCategory = saveCategory;
     window.addCategory = addCategory;
     window.addSubcategoryToList = addSubcategoryToList;
-    window.openSubcategoryModalFromBadge = openSubcategoryModalFromBadge;
+    window.showCategoryBreakdown = showCategoryBreakdown;
+    window.showOverviewChart = showOverviewChart;
     window.openSubcategoryModalFromButton = openSubcategoryModalFromButton;
     window.editCategoryFromButton = editCategoryFromButton;
     window.deleteCategoryFromButton = deleteCategoryFromButton;
