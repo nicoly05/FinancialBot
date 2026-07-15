@@ -215,7 +215,13 @@ def dashboard():
                           total_spent=total_spent,
                           highest_spending=highest_spending,
                           category_names=category_names,
-                          categories_json=[{'id': cat.id, 'name': cat.name, 'emoji': cat.emoji, 'color': cat.color} for cat in user_categories])
+                          categories_json=[{
+                              'id': cat.id,
+                              'name': cat.name,
+                              'emoji': cat.emoji,
+                              'color': cat.color,
+                              'subcategories': json.loads(cat.subcategories) if cat.subcategories else []
+                          } for cat in user_categories])
 
 @app.route('/chat')
 @login_required
@@ -276,6 +282,7 @@ def api_add_category():
     name = data.get('name')
     emoji = data.get('emoji', '📁')
     color = data.get('color', '#3b82f6')
+    subcategories = data.get('subcategories', [])
     
     if not name:
         return jsonify({'error': 'Name is required'}), 400
@@ -285,7 +292,17 @@ def api_add_category():
     if existing:
         return jsonify({'error': 'Category already exists'}), 400
     
-    category = Category(user_id=current_user.id, name=name, emoji=emoji, color=color, subcategories=None)
+    # Limit subcategories to 10
+    if len(subcategories) > 10:
+        return jsonify({'error': 'Maximum 10 subcategories allowed'}), 400
+    
+    category = Category(
+        user_id=current_user.id, 
+        name=name, 
+        emoji=emoji, 
+        color=color, 
+        subcategories=json.dumps(subcategories) if subcategories else None
+    )
     db.session.add(category)
     
     # Update session to mark categories as configured
@@ -363,6 +380,7 @@ def api_update_category(category_id):
     name = data.get('name')
     emoji = data.get('emoji', '📁')
     color = data.get('color', '#3b82f6')
+    subcategories = data.get('subcategories')
     
     if not name:
         return jsonify({'error': 'Name is required'}), 400
@@ -372,9 +390,16 @@ def api_update_category(category_id):
     if existing and existing.id != category_id:
         return jsonify({'error': 'Category name already exists'}), 400
     
+    # Limit subcategories to 10 if provided
+    if subcategories is not None and len(subcategories) > 10:
+        return jsonify({'error': 'Maximum 10 subcategories allowed'}), 400
+    
     category.name = name
     category.emoji = emoji
     category.color = color
+    if subcategories is not None:
+        category.subcategories = json.dumps(subcategories) if subcategories else None
+    
     db.session.commit()
     
     return jsonify({'success': True})
