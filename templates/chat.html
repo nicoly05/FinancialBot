@@ -107,11 +107,20 @@
                 <div class="chat-container" id="chatContainer">
                     {% if not chat_history %}
                     <div class="chat-message bot">
-                        ✨ Bem-vinda ao teu bot de cuidados com as tuas finanças! ✨<br><br>
-                        Indica as tuas categorias no formato:<br><br>
-                        1. categoria 1<br>
-                        2. categoria 2<br>
-                        3. categoria 3
+                      ✨ Bem-vindo(a) ao teu bot de finanças! ✨<br>
+                      <br>
+    Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:<br>
+    1️⃣ Vai ao Dashboard<br>
+    2️⃣ Na secção "Categorias", clica em "Editar"<br>
+    3️⃣ Clica em "Adicionar", escolhe um nome, emoji e cor (e subcategorias, se quiseres)<br>
+    4️⃣ Clica em "Guardar"<br>
+    <br>
+    Depois de teres pelo menos uma categoria, volta aqui e usa o chat para registar valores:<br>
+    💰 "adicionar 50" — para somar 50€ a uma categoria (ex: um rendimento)<br>
+    ➖ "remover 20" — para subtrair 20€ de uma categoria (ex: uma despesa)<br>
+    <br>
+    Eu pergunto sempre em que categoria (e subcategoria, se a categoria tiver) queres aplicar o valor.
+
                     </div>
                     {% else %}
                         {% for msg in chat_history %}

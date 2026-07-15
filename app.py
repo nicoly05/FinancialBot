@@ -461,6 +461,32 @@ def api_delete_subcategory(category_id):
     
     return jsonify({'success': True})
 
+@app.route('/api/category/<int:category_id>/subcategory-totals', methods=['GET'])
+@login_required
+def api_subcategory_totals(category_id):
+    category = Category.query.get(category_id)
+    if not category or category.user_id != current_user.id:
+        return jsonify({'error': 'Category not found'}), 404
+
+    subcategories = json.loads(category.subcategories) if category.subcategories else []
+    transactions = Transaction.query.filter_by(category_id=category_id).all()
+
+    totals = {sub: 0 for sub in subcategories}
+    no_subcategory_total = 0
+    for t in transactions:
+        if t.subcategory and t.subcategory in totals:
+            totals[t.subcategory] += t.amount
+        else:
+            no_subcategory_total += t.amount
+
+    return jsonify({
+        'category_id': category.id,
+        'category_name': category.name,
+        'category_color': category.color,
+        'subcategories': [{'name': s, 'total': totals[s]} for s in subcategories],
+        'no_subcategory_total': no_subcategory_total
+    })
+
 @app.route('/api/dashboard-data', methods=['GET'])
 @login_required
 def api_dashboard_data():
@@ -479,14 +505,38 @@ def api_dashboard_data():
         'total_spent': sum(category_totals.values())
     })
 
+NO_CATEGORIES_MESSAGE = (
+    "✨ Bem-vindo(a) ao teu bot de finanças! ✨\n\n"
+    "Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:\n\n"
+    "1️⃣ Vai ao Dashboard\n"
+    "2️⃣ Na secção \"Categorias\", clica em \"Editar\"\n"
+    "3️⃣ Clica em \"Adicionar\", escolhe um nome, emoji e cor (e subcategorias, se quiseres)\n"
+    "4️⃣ Clica em \"Guardar\"\n\n"
+    "Depois de teres pelo menos uma categoria, volta aqui e usa o chat para registar valores:\n\n"
+    "💰 \"adicionar 50\" — para somar 50€ a uma categoria (ex: um rendimento)\n"
+    "➖ \"remover 20\" — para subtrair 20€ de uma categoria (ex: uma despesa)\n\n"
+    "Eu pergunto sempre em que categoria (e subcategoria, se a categoria tiver) queres aplicar o valor."
+)
+
+CHAT_HELP_MESSAGE = (
+    "Já tens categorias configuradas! 🙂\n\n"
+    "Podes gerir mais categorias e subcategorias a qualquer momento no Dashboard, "
+    "na secção \"Categorias\" → botão \"Editar\".\n\n"
+    "Aqui no chat, usa:\n\n"
+    "💰 \"adicionar 50\" — para somar um valor a uma categoria\n"
+    "➖ \"remover 20\" — para subtrair um valor de uma categoria\n\n"
+    "Depois do comando, escolho contigo a categoria (e a subcategoria, se existir)."
+)
+
 def process_chat_message(message, user_id):
     # Check if user has categories configured
     user_categories = Category.query.filter_by(user_id=user_id).all()
     if not user_categories:
-        return "Primeiro configura as tuas categorias no dashboard! Clica em 'Editar' na secção de categorias."
+        return NO_CATEGORIES_MESSAGE
     
     # Handle value modification
     return handle_value_modification(message, user_id)
+
 
 def handle_category_configuration(message, user_id):
     user_session = Session.query.filter_by(user_id=user_id).first()
@@ -504,12 +554,17 @@ def handle_category_configuration(message, user_id):
     
     # Initial greeting
     if message in ['oi', 'olá', 'hello', 'hi']:
-        return """✨ Bem-vinda ao teu bot de cuidados com as tuas finanças! ✨
-Indica as tuas categorias no formato:
-
-1. categoria 1
-2. categoria 2
-3. categoria 3"""
+        return """"✨ Bem-vindo(a) ao teu bot de finanças! ✨\n\n"
+    "Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:\n\n"
+    "1️⃣ Vai ao Dashboard\n"
+    "2️⃣ Na secção \"Categorias\", clica em \"Editar\"\n"
+    "3️⃣ Clica em \"Adicionar\", escolhe um nome, emoji e cor (e subcategorias, se quiseres)\n"
+    "4️⃣ Clica em \"Guardar\"\n\n"
+    "Depois de teres pelo menos uma categoria, volta aqui e usa o chat para registar valores:\n\n"
+    "💰 \"adicionar 50\" — para somar 50€ a uma categoria (ex: um rendimento)\n"
+    "➖ \"remover 20\" — para subtrair 20€ de uma categoria (ex: uma despesa)\n\n"
+    "Eu pergunto sempre em que categoria (e subcategoria, se a categoria tiver) queres aplicar o valor."
+"""
     
     # Parse categories
     if message.startswith('1.') or message.startswith('2.') or message.startswith('3.'):
@@ -595,6 +650,10 @@ Indica as tuas categorias no formato:
 def handle_value_modification(message, user_id):
     user_session = Session.query.filter_by(user_id=user_id).first()
     
+    # Saudação ou pedido de ajuda: recorda como usar o dashboard e o chat
+    if message in ['oi', 'olá', 'ola', 'hello', 'hi', 'ajuda', 'help', 'como funciona']:
+        return CHAT_HELP_MESSAGE
+    
     # Check for add/remove command
     if message.startswith('adicionar'):
         try:
@@ -622,8 +681,41 @@ def handle_value_modification(message, user_id):
         except (IndexError, ValueError):
             return "Formato incorreto. Exemplo: remover 400"
     
-    # Handle category selection
-    if message.isdigit() and user_session and user_session.pending_action:
+    # Handle subcategory selection (tem de vir ANTES da seleção de categoria,
+    # senão o número da subcategoria é interpretado como número de categoria)
+    if message.isdigit() and user_session and user_session.selected_category:
+        cat = Category.query.get(user_session.selected_category)
+        if cat:
+            subcategories = json.loads(cat.subcategories) if cat.subcategories else []
+            if subcategories:
+                sub_index = int(message) - 1
+                if 0 <= sub_index < len(subcategories):
+                    selected_sub = subcategories[sub_index]
+                    action = user_session.pending_action
+                    amount = user_session.pending_amount
+                    
+                    transaction_type = 'income' if action == 'add' else 'expense'
+                    # Use negative amount for remove action
+                    transaction_amount = amount if action == 'add' else -amount
+                    transaction = Transaction(
+                        user_id=user_id,
+                        category_id=cat.id,
+                        subcategory=selected_sub,
+                        amount=transaction_amount,
+                        type=transaction_type,
+                        timestamp=datetime.now()
+                    )
+                    db.session.add(transaction)
+                    
+                    user_session.pending_action = None
+                    user_session.pending_amount = None
+                    user_session.selected_category = None
+                    db.session.commit()
+                    
+                    return f"✅ {amount}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_sub} ({cat.name})!"
+    
+    # Handle category selection (só dispara se não estivermos a meio da escolha de subcategoria)
+    if message.isdigit() and user_session and user_session.pending_action and not user_session.selected_category:
         cat_index = int(message) - 1
         user_categories = Category.query.filter_by(user_id=user_id).all()
         
@@ -660,39 +752,7 @@ def handle_value_modification(message, user_id):
             
             return f"✅ {amount}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_cat.name}!"
     
-    # Handle subcategory selection
-    if message.isdigit() and user_session and user_session.selected_category:
-        cat = Category.query.get(user_session.selected_category)
-        if cat:
-            subcategories = json.loads(cat.subcategories) if cat.subcategories else []
-            if subcategories:
-                sub_index = int(message) - 1
-                if 0 <= sub_index < len(subcategories):
-                    selected_sub = subcategories[sub_index]
-                    action = user_session.pending_action
-                    amount = user_session.pending_amount
-                    
-                    transaction_type = 'income' if action == 'add' else 'expense'
-                    # Use negative amount for remove action
-                    transaction_amount = amount if action == 'add' else -amount
-                    transaction = Transaction(
-                        user_id=user_id,
-                        category_id=cat.id,
-                        subcategory=selected_sub,
-                        amount=transaction_amount,
-                        type=transaction_type,
-                        timestamp=datetime.now()
-                    )
-                    db.session.add(transaction)
-                    
-                    user_session.pending_action = None
-                    user_session.pending_amount = None
-                    user_session.selected_category = None
-                    db.session.commit()
-                    
-                    return f"✅ {amount}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_sub} ({cat.name})!"
-    
-    return "Comando não reconhecido. Escreve \"adicionar\" ou \"remover\" seguido do valor em €."
+    return "Comando não reconhecido. Escreve \"adicionar\" ou \"remover\" seguido do valor em €, ou escreve \"ajuda\" para ver as instruções."
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
