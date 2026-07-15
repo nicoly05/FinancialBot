@@ -11,21 +11,25 @@
         font-size: 0.875rem;
         transition: all 0.3s ease;
     }
-    
+
     .chart-btn.active {
         background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
         color: white;
     }
-    
+
     .stat-value {
         font-size: 2rem;
         font-weight: 700;
         color: var(--primary-color);
     }
-    
+
     .stat-label {
         color: var(--text-light);
         font-size: 0.875rem;
+    }
+
+    .category-badge {
+        cursor: pointer;
     }
 </style>
 {% endblock %}
@@ -61,13 +65,13 @@
     <div class="col-12">
         <div class="card p-3">
             <div class="d-flex flex-wrap gap-2">
-                <button class="btn chart-btn active" onclick="showChart('pie')">
+                <button class="btn chart-btn active" data-chart-type="pie" onclick="showChart('pie', this)">
                     <i class="bi bi-pie-chart"></i> Pizza
                 </button>
-                <button class="btn chart-btn" onclick="showChart('line')">
+                <button class="btn chart-btn" data-chart-type="line" onclick="showChart('line', this)">
                     <i class="bi bi-graph-up"></i> Linha
                 </button>
-                <button class="btn chart-btn" onclick="showChart('bar')">
+                <button class="btn chart-btn" data-chart-type="bar" onclick="showChart('bar', this)">
                     <i class="bi bi-bar-chart"></i> Barras
                 </button>
             </div>
@@ -99,7 +103,11 @@
             <div class="mt-3">
                 {% for category in categories %}
                     {% set subcats = category.subcategories|from_json %}
-                    <span class="category-badge" style="background-color: {{ category.color }}20; color: {{ category.color }}; cursor: pointer;" onclick="openSubcategoryModal({{ category.id }}, '{{ category.name }}')">
+                    <span class="category-badge"
+                          data-category-id="{{ category.id }}"
+                          data-category-name="{{ category.name }}"
+                          data-color="{{ category.color }}"
+                          onclick="openSubcategoryModalFromBadge(this)">
                         {{ category.emoji }} {{ category.name }}
                         {% if subcats %}
                             <small>({{ subcats|length }} subcategorias)</small>
@@ -130,13 +138,24 @@
                             <div class="d-flex justify-content-between align-items-center p-2 border rounded">
                                 <span>{{ category.emoji }} {{ category.name }}</span>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <button class="btn btn-sm btn-outline-info" data-action="subcategory-category" onclick="openSubcategoryModal({{ category.id }}, '{{ category.name }}')">
+                                    <button class="btn btn-sm btn-outline-info" data-action="subcategory-category"
+                                            data-category-id="{{ category.id }}"
+                                            data-category-name="{{ category.name }}"
+                                            onclick="openSubcategoryModalFromButton(this)">
                                         <i class="bi bi-list"></i> Subcategorias
                                     </button>
-                                    <button class="btn btn-sm btn-outline-primary" data-action="edit-category" onclick="editCategory({{ category.id }}, {{ category.name|tojson }}, {{ category.emoji|tojson }}, {{ category.color|tojson }})">
+                                    <button class="btn btn-sm btn-outline-primary" data-action="edit-category"
+                                            data-category-id="{{ category.id }}"
+                                            data-category-name="{{ category.name }}"
+                                            data-category-emoji="{{ category.emoji }}"
+                                            data-category-color="{{ category.color }}"
+                                            onclick="editCategoryFromButton(this)">
                                         <i class="bi bi-pencil"></i> Editar
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger" data-action="delete-category" onclick="deleteCategory({{ category.id }}, '{{ category.name }}')">
+                                    <button class="btn btn-sm btn-outline-danger" data-action="delete-category"
+                                            data-category-id="{{ category.id }}"
+                                            data-category-name="{{ category.name }}"
+                                            onclick="deleteCategoryFromButton(this)">
                                         <i class="bi bi-trash"></i> Remover
                                     </button>
                                 </div>
@@ -163,6 +182,18 @@
                     <div class="mb-2">
                         <input type="color" class="form-control form-control-color" id="newCategoryColor" value="#3b82f6">
                     </div>
+                    <div class="mb-2">
+                        <label class="form-label">Subcategorias (máx. 10)</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="newSubcategoryInput" placeholder="Nome da subcategoria">
+                            <button class="btn btn-outline-secondary" type="button" onclick="addSubcategoryToList()">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                        <div id="subcategoryList" class="d-flex flex-wrap gap-2">
+                            <!-- Subcategories will be added here -->
+                        </div>
+                    </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-secondary flex-1" onclick="hideCategoryForm()">Cancelar</button>
                         <button class="btn btn-success flex-1" id="saveCategoryBtn" onclick="saveCategory()">
@@ -184,7 +215,7 @@
                 <button type="button" class="btn-close" onclick="closeSubcategoryModal()"></button>
             </div>
             <div class="modal-body">
-                <div id="subcategoryList">
+                <div id="subcategoryListContainer">
                     <!-- Subcategories will be loaded here -->
                 </div>
                 <div class="mt-3">
@@ -222,324 +253,411 @@
         </div>
     </div>
 </div>
+
+{# Os dados vindos do Jinja ficam isolados aqui, em tags script type=application/json.
+   Esse tipo de script nao e executado nem validado como JavaScript pelo navegador ou
+   pelo editor, entao as expressoes Jinja nunca sao interpretadas como JS/CSS quebrado. #}
+<script type="application/json" id="categories-data">{{ categories_json|tojson }}</script>
+<script type="application/json" id="category-totals-data">{{ category_totals|tojson }}</script>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-let mainChart = null;
-const categoryNames = {{ categories|map(attribute='name')|list|tojson }};
-const categoryTotals = {{ category_totals|tojson }};
-const categoryIds = {{ categories|map(attribute='id')|list|tojson }};
-const categoryColors = {{ categories|map(attribute='color')|list|tojson }};
+(function () {
+    // Lê os dados injetados pelo servidor a partir das tags JSON acima.
+    // Nenhuma expressão Jinja aparece dentro deste bloco <script> normal.
+    const allCategories = JSON.parse(document.getElementById('categories-data').textContent || '[]');
+    const categoryTotals = JSON.parse(document.getElementById('category-totals-data').textContent || '{}');
 
-const dataValues = categoryIds.map(id => categoryTotals[id] || 0);
+    const categoryNames = allCategories.map(c => c.name);
+    const categoryIds = allCategories.map(c => c.id);
+    const categoryColors = allCategories.map(c => c.color);
+    const dataValues = categoryIds.map(id => categoryTotals[id] || 0);
 
-function showChart(type) {
-    const ctx = document.getElementById('mainChart').getContext('2d');
-    
-    if (mainChart) {
-        mainChart.destroy();
-    }
-    
-    const config = {
-        type: type,
-        data: {
-            labels: categoryNames,
-            datasets: [{
-                label: 'Valor (€)',
-                data: dataValues,
-                backgroundColor: categoryColors,
-                borderColor: categoryColors,
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom'
+    let mainChart = null;
+    let currentCategoryId = null;
+    let tempSubcategories = [];
+
+    // Aplica as cores das categorias (antes vinham via style="" com Jinja embutido)
+    document.querySelectorAll('.category-badge[data-color]').forEach(el => {
+        el.style.backgroundColor = el.dataset.color;
+        el.style.color = '#333';
+    });
+
+    function showChart(type, btn) {
+        const ctx = document.getElementById('mainChart').getContext('2d');
+
+        if (mainChart) {
+            mainChart.destroy();
+        }
+
+        const config = {
+            type: type,
+            data: {
+                labels: categoryNames,
+                datasets: [{
+                    label: 'Valor (€)',
+                    data: dataValues,
+                    backgroundColor: categoryColors,
+                    borderColor: categoryColors,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
                 }
             }
+        };
+
+        if (type === 'line') {
+            config.data.datasets[0].fill = true;
+            config.data.datasets[0].tension = 0.4;
         }
-    };
-    
-    if (type === 'line') {
-        config.data.datasets[0].fill = true;
-        config.data.datasets[0].tension = 0.4;
+
+        mainChart = new Chart(ctx, config);
+
+        document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
     }
-    
-    mainChart = new Chart(ctx, config);
-    
-    // Update button states
-    document.querySelectorAll('.chart-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.closest('.chart-btn').classList.add('active');
-}
 
-// Initialize with pie chart
-showChart('pie');
+    // Inicializa com o gráfico de pizza
+    showChart('pie', document.querySelector('.chart-btn[data-chart-type="pie"]'));
 
-// Auto-refresh dashboard every 30 seconds
-setInterval(() => {
-    location.reload();
-}, 30000);
+    // Auto-refresh do dashboard a cada 30 segundos
+    setInterval(() => {
+        location.reload();
+    }, 30000);
 
-// Category Management
-const allCategories = {{ categories_json|tojson }};
-let currentCategoryId = null;
+    // --- Gestão de categorias ---
 
-function closeCategoryModal() {
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('categoryModal'));
-    modal.hide();
-}
+    function closeCategoryModal() {
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('categoryModal'));
+        modal.hide();
+    }
 
-function showCategoryForm() {
-    document.getElementById('categoryForm').style.display = 'block';
-    document.getElementById('categoryList').style.display = 'block';
-    document.getElementById('categoryAddButton').style.display = 'none';
-}
+    function showCategoryForm() {
+        document.getElementById('categoryForm').style.display = 'block';
+        document.getElementById('categoryList').style.display = 'none';
+        document.getElementById('categoryAddButton').style.display = 'none';
+    }
 
-function hideCategoryForm() {
-    document.getElementById('categoryForm').style.display = 'none';
-    document.getElementById('categoryList').style.display = 'block';
-    document.getElementById('categoryAddButton').style.display = 'block';
-    resetCategoryForm();
-}
+    function hideCategoryForm() {
+        document.getElementById('categoryForm').style.display = 'none';
+        document.getElementById('categoryList').style.display = 'block';
+        document.getElementById('categoryAddButton').style.display = 'block';
+        resetCategoryForm();
+    }
 
-function openCategoryModal() {
-    // Antes: hideCategoryForm() -> modal.show() -> loadCategories()
-    // A chamada a loadCategories() apagava a lista já renderizada pelo
-    // Jinja (a partir de `categories`) e tentava reconstruí-la usando
-    // `allCategories` (vindo de `categories_json`). Quando esse contexto
-    // não estava disponível/sincronizado, a lista ficava vazia e só o
-    // botão "Adicionar" aparecia.
-    //
-    // Como saveCategory(), deleteCategoryRequest() e confirmDeleteWithMove()
-    // já fazem location.reload() após qualquer alteração, o HTML
-    // renderizado pelo servidor já está sempre atualizado quando o modal
-    // é aberto — não é necessário reconstruir a lista via JS aqui.
-    hideCategoryForm();
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('categoryModal'));
-    modal.show();
-}
+    function openCategoryModal() {
+        // saveCategory(), deleteCategoryRequest() e confirmDeleteWithMove() já fazem
+        // location.reload() após qualquer alteração, então o HTML renderizado pelo
+        // servidor já está sempre atualizado quando o modal é aberto.
+        hideCategoryForm();
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('categoryModal'));
+        modal.show();
+    }
 
-function openNewCategoryModal() {
-    resetCategoryForm();
-    openCategoryModal();
-}
+    function openNewCategoryModal() {
+        resetCategoryForm();
+        openCategoryModal();
+    }
 
-function closeSubcategoryModal() {
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('subcategoryModal'));
-    modal.hide();
-    currentCategoryId = null;
-}
+    function closeSubcategoryModal() {
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('subcategoryModal'));
+        modal.hide();
+        currentCategoryId = null;
+    }
 
-function openSubcategoryModal(categoryId, categoryName) {
-    currentCategoryId = categoryId;
-    document.getElementById('subcategoryCategoryName').textContent = categoryName;
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('subcategoryModal'));
-    modal.show();
-    loadSubcategories();
-}
+    function openSubcategoryModalFromBadge(element) {
+        const id = parseInt(element.dataset.categoryId, 10);
+        const name = element.dataset.categoryName;
+        openSubcategoryModal(id, name);
+    }
 
-function closeMoveMoneyModal() {
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('moveMoneyModal'));
-    modal.hide();
-}
+    function openSubcategoryModalFromButton(element) {
+        const id = parseInt(element.dataset.categoryId, 10);
+        const name = element.dataset.categoryName;
+        openSubcategoryModal(id, name);
+    }
 
-function editCategory(id, name, emoji, color) {
-    openCategoryModal();
-    document.getElementById('editCategoryId').value = id;
-    document.getElementById('newCategoryName').value = name;
-    document.getElementById('newCategoryEmoji').value = emoji;
-    document.getElementById('newCategoryColor').value = color;
-    document.getElementById('categoryFormTitle').textContent = 'Editar Categoria';
-    document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-check"></i> Guardar';
-    showCategoryForm();
-}
+    function editCategoryFromButton(element) {
+        const id = parseInt(element.dataset.categoryId, 10);
+        const name = element.dataset.categoryName;
+        const emoji = element.dataset.categoryEmoji;
+        const color = element.dataset.categoryColor;
+        editCategory(id, name, emoji, color);
+    }
 
-function resetCategoryForm() {
-    document.getElementById('editCategoryId').value = '';
-    document.getElementById('newCategoryName').value = '';
-    document.getElementById('newCategoryEmoji').value = '';
-    document.getElementById('newCategoryColor').value = '#3b82f6';
-    document.getElementById('categoryFormTitle').textContent = 'Nova Categoria';
-    document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-plus"></i> Adicionar';
-}
+    function deleteCategoryFromButton(element) {
+        const id = parseInt(element.dataset.categoryId, 10);
+        const name = element.dataset.categoryName;
+        deleteCategory(id, name);
+    }
 
-async function saveCategory() {
-    const editId = document.getElementById('editCategoryId').value;
-    const name = document.getElementById('newCategoryName').value.trim();
-    const emoji = document.getElementById('newCategoryEmoji').value.trim() || '📁';
-    const color = document.getElementById('newCategoryColor').value || '#3b82f6';
-    
-    if (!name) return;
-    
-    try {
-        let response;
-        if (editId) {
-            // Update existing category
-            response = await fetch(`/api/category/${editId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, emoji, color })
-            });
-        } else {
-            // Add new category
-            response = await fetch('/api/category', {
+    function openSubcategoryModal(categoryId, categoryName) {
+        currentCategoryId = categoryId;
+        document.getElementById('subcategoryCategoryName').textContent = categoryName;
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('subcategoryModal'));
+        modal.show();
+        loadSubcategories();
+    }
+
+    function closeMoveMoneyModal() {
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('moveMoneyModal'));
+        modal.hide();
+    }
+
+    function editCategory(id, name, emoji, color) {
+        openCategoryModal();
+        document.getElementById('editCategoryId').value = id;
+        document.getElementById('newCategoryName').value = name;
+        document.getElementById('newCategoryEmoji').value = emoji;
+        document.getElementById('newCategoryColor').value = color;
+        document.getElementById('categoryFormTitle').textContent = 'Editar Categoria';
+        document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-check"></i> Guardar';
+
+        const cat = allCategories.find(c => c.id === id);
+        tempSubcategories = (cat && cat.subcategories) ? [...cat.subcategories] : [];
+        renderSubcategoryList();
+
+        showCategoryForm();
+    }
+
+    function addSubcategoryToList() {
+        const input = document.getElementById('newSubcategoryInput');
+        const name = input.value.trim();
+
+        if (!name) return;
+        if (tempSubcategories.length >= 10) {
+            alert('Máximo de 10 subcategorias permitidas.');
+            return;
+        }
+        if (tempSubcategories.includes(name)) {
+            alert('Esta subcategoria já existe.');
+            return;
+        }
+
+        tempSubcategories.push(name);
+        input.value = '';
+        renderSubcategoryList();
+    }
+
+    function removeSubcategoryFromList(index) {
+        tempSubcategories.splice(index, 1);
+        renderSubcategoryList();
+    }
+
+    function renderSubcategoryList() {
+        const list = document.getElementById('subcategoryList');
+        list.innerHTML = '';
+
+        tempSubcategories.forEach((sub, index) => {
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-secondary d-flex align-items-center gap-1';
+            badge.innerHTML = `
+                ${sub}
+                <button type="button" class="btn-close btn-close-white" style="font-size: 0.5rem;" data-index="${index}"></button>
+            `;
+            badge.querySelector('button').addEventListener('click', () => removeSubcategoryFromList(index));
+            list.appendChild(badge);
+        });
+    }
+
+    function resetCategoryForm() {
+        document.getElementById('editCategoryId').value = '';
+        document.getElementById('newCategoryName').value = '';
+        document.getElementById('newCategoryEmoji').value = '';
+        document.getElementById('newCategoryColor').value = '#3b82f6';
+        document.getElementById('categoryFormTitle').textContent = 'Nova Categoria';
+        document.getElementById('saveCategoryBtn').innerHTML = '<i class="bi bi-plus"></i> Adicionar';
+        tempSubcategories = [];
+        renderSubcategoryList();
+    }
+
+    async function saveCategory() {
+        const editId = document.getElementById('editCategoryId').value;
+        const name = document.getElementById('newCategoryName').value.trim();
+        const emoji = document.getElementById('newCategoryEmoji').value.trim() || '📁';
+        const color = document.getElementById('newCategoryColor').value || '#3b82f6';
+
+        if (!name) return;
+
+        try {
+            let response;
+            if (editId) {
+                response = await fetch(`/api/category/${editId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, emoji, color, subcategories: tempSubcategories })
+                });
+            } else {
+                response = await fetch('/api/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, emoji, color, subcategories: tempSubcategories })
+                });
+            }
+
+            if (response.ok) {
+                resetCategoryForm();
+                hideCategoryForm();
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Error saving category:', error);
+        }
+    }
+
+    async function addCategory() {
+        resetCategoryForm();
+        saveCategory();
+    }
+
+    async function deleteCategory(id, name) {
+        try {
+            const response = await fetch(`/api/category/${id}/check`, { method: 'GET' });
+            const data = await response.json();
+
+            if (data.has_transactions) {
+                document.getElementById('categoryToDelete').value = id;
+                const select = document.getElementById('targetCategory');
+                select.innerHTML = '';
+
+                allCategories.forEach(cat => {
+                    if (cat.id !== id) {
+                        const option = document.createElement('option');
+                        option.value = cat.id;
+                        option.textContent = cat.name;
+                        select.appendChild(option);
+                    }
+                });
+
+                bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
+                new bootstrap.Modal(document.getElementById('moveMoneyModal')).show();
+            } else {
+                if (confirm(`Tem a certeza que deseja remover "${name}"?`)) {
+                    await deleteCategoryRequest(id);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking category:', error);
+        }
+    }
+
+    async function confirmDeleteWithMove() {
+        const categoryId = document.getElementById('categoryToDelete').value;
+        const targetId = document.getElementById('targetCategory').value;
+
+        try {
+            const response = await fetch(`/api/category/${categoryId}/move`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, emoji, color })
+                body: JSON.stringify({ target_id: targetId })
             });
-        }
-        
-        if (response.ok) {
-            resetCategoryForm();
-            hideCategoryForm();
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Error saving category:', error);
-    }
-}
 
-async function addCategory() {
-    resetCategoryForm();
-    saveCategory();
-}
-
-async function deleteCategory(id, name) {
-    try {
-        const response = await fetch(`/api/category/${id}/check`, {
-            method: 'GET'
-        });
-        
-        const data = await response.json();
-        
-        if (data.has_transactions) {
-            // Show move money modal
-            document.getElementById('categoryToDelete').value = id;
-            const select = document.getElementById('targetCategory');
-            select.innerHTML = '';
-            
-            allCategories.forEach(cat => {
-                if (cat.id !== id) {
-                    const option = document.createElement('option');
-                    option.value = cat.id;
-                    option.textContent = cat.name;
-                    select.appendChild(option);
-                }
-            });
-            
-            bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
-            new bootstrap.Modal(document.getElementById('moveMoneyModal')).show();
-        } else {
-            // Delete directly
-            if (confirm(`Tem a certeza que deseja remover "${name}"?`)) {
-                await deleteCategoryRequest(id);
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('moveMoneyModal')).hide();
+                location.reload();
             }
+        } catch (error) {
+            console.error('Error moving transactions:', error);
         }
-    } catch (error) {
-        console.error('Error checking category:', error);
     }
-}
 
-async function confirmDeleteWithMove() {
-    const categoryId = document.getElementById('categoryToDelete').value;
-    const targetId = document.getElementById('targetCategory').value;
-    
-    try {
-        const response = await fetch(`/api/category/${categoryId}/move`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_id: targetId })
-        });
-        
-        if (response.ok) {
-            bootstrap.Modal.getInstance(document.getElementById('moveMoneyModal')).hide();
-            location.reload();
+    async function deleteCategoryRequest(id) {
+        try {
+            const response = await fetch(`/api/category/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Error deleting category:', error);
         }
-    } catch (error) {
-        console.error('Error moving transactions:', error);
     }
-}
 
-async function deleteCategoryRequest(id) {
-    try {
-        const response = await fetch(`/api/category/${id}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.ok) {
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Error deleting category:', error);
+    function loadSubcategories() {
+        const container = document.getElementById('subcategoryListContainer');
+        container.innerHTML = '';
+
+        fetch(`/api/category/${currentCategoryId}`)
+            .then(res => res.json())
+            .then(data => {
+                const subcategories = data.subcategories || [];
+                subcategories.forEach((sub, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'd-flex justify-content-between align-items-center mb-2 p-2 border rounded';
+                    div.innerHTML = `
+                        <span>${sub}</span>
+                        <button class="btn btn-sm btn-danger" data-index="${index}">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    `;
+                    div.querySelector('button').addEventListener('click', () => deleteSubcategory(index));
+                    container.appendChild(div);
+                });
+            })
+            .catch(err => console.error('Error loading subcategories:', err));
     }
-}
 
-function loadSubcategories() {
-    const category = allCategories.find(cat => cat.id === currentCategoryId);
-    if (!category) return;
-    
-    const subcategoryList = document.getElementById('subcategoryList');
-    subcategoryList.innerHTML = '';
-    
-    // Note: subcategories are stored as JSON string in the database
-    // We need to fetch them from the API
-    fetch(`/api/category/${currentCategoryId}`)
-        .then(res => res.json())
-        .then(data => {
-            const subcategories = data.subcategories || [];
-            subcategories.forEach((sub, index) => {
-                const div = document.createElement('div');
-                div.className = 'd-flex justify-content-between align-items-center mb-2 p-2 border rounded';
-                div.innerHTML = `
-                    <span>${sub}</span>
-                    <button class="btn btn-sm btn-danger" onclick="deleteSubcategory(${index})">
-                        <i class="bi bi-x"></i>
-                    </button>
-                `;
-                subcategoryList.appendChild(div);
+    async function addSubcategory() {
+        const name = document.getElementById('newSubcategoryName').value.trim();
+        if (!name || !currentCategoryId) return;
+
+        try {
+            const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
             });
-        })
-        .catch(err => console.error('Error loading subcategories:', err));
-}
 
-async function addSubcategory() {
-    const name = document.getElementById('newSubcategoryName').value.trim();
-    if (!name || !currentCategoryId) return;
-    
-    try {
-        const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        
-        if (response.ok) {
-            document.getElementById('newSubcategoryName').value = '';
-            loadSubcategories();
+            if (response.ok) {
+                document.getElementById('newSubcategoryName').value = '';
+                loadSubcategories();
+            }
+        } catch (error) {
+            console.error('Error adding subcategory:', error);
         }
-    } catch (error) {
-        console.error('Error adding subcategory:', error);
     }
-}
 
-async function deleteSubcategory(index) {
-    try {
-        const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ index })
-        });
-        
-        if (response.ok) {
-            loadSubcategories();
+    async function deleteSubcategory(index) {
+        try {
+            const response = await fetch(`/api/category/${currentCategoryId}/subcategory`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ index })
+            });
+
+            if (response.ok) {
+                loadSubcategories();
+            }
+        } catch (error) {
+            console.error('Error deleting subcategory:', error);
         }
-    } catch (error) {
-        console.error('Error deleting subcategory:', error);
     }
-}
+
+    // Expõe as funções usadas em onclick="" no HTML
+    window.showChart = showChart;
+    window.openCategoryModal = openCategoryModal;
+    window.openNewCategoryModal = openNewCategoryModal;
+    window.closeCategoryModal = closeCategoryModal;
+    window.showCategoryForm = showCategoryForm;
+    window.hideCategoryForm = hideCategoryForm;
+    window.saveCategory = saveCategory;
+    window.addCategory = addCategory;
+    window.addSubcategoryToList = addSubcategoryToList;
+    window.openSubcategoryModalFromBadge = openSubcategoryModalFromBadge;
+    window.openSubcategoryModalFromButton = openSubcategoryModalFromButton;
+    window.editCategoryFromButton = editCategoryFromButton;
+    window.deleteCategoryFromButton = deleteCategoryFromButton;
+    window.closeSubcategoryModal = closeSubcategoryModal;
+    window.closeMoveMoneyModal = closeMoveMoneyModal;
+    window.confirmDeleteWithMove = confirmDeleteWithMove;
+    window.addSubcategory = addSubcategory;
+})();
 </script>
 {% endblock %}
