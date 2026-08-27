@@ -31,53 +31,6 @@
     .category-badge {
         cursor: pointer;
     }
-    
-    .achievement-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-radius: 20px;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        color: white;
-        font-size: 0.875rem;
-        font-weight: 500;
-        margin: 4px;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-    }
-    
-    .achievement-icon {
-        font-size: 1.2rem;
-    }
-    
-    .achievement-points {
-        background: rgba(255, 255, 255, 0.3);
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-size: 0.75rem;
-    }
-    
-    .goal-item {
-        padding: 12px;
-        border-radius: 8px;
-        background: var(--bg-light);
-        border: 1px solid var(--border-color);
-    }
-    
-    .goal-progress {
-        font-weight: 700;
-        color: var(--primary-color);
-    }
-    
-    .goals-container {
-        max-height: 300px;
-        overflow-y: auto;
-    }
 </style>
 {% endblock %}
 
@@ -91,141 +44,29 @@
 
 <!-- Stats Cards -->
 <div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card stat-card p-4">
-            <div class="stat-label">Total Gasto</div>
-            <div class="stat-value">€{{ "%.2f"|format(total_spent) }}</div>
+    <div class="col-md-4">
+        <div class="card stat-card p-4" style="cursor: pointer;" onclick="showTotalBreakdown()">
+            <div class="stat-label">Total (Ganhos - Gastos)</div>
+            <div class="stat-value">€{{ "%.2f"|format(total_income - total_spent) }}</div>
+            <small class="text-muted">Ganhos: €{{ "%.2f"|format(total_income) }} | Gastos: €{{ "%.2f"|format(total_spent) }}</small>
             <i class="bi bi-cash-stack position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card stat-card p-4">
-            <div class="stat-label">Total Receita</div>
-            <div class="stat-value text-success">€{{ "%.2f"|format(total_income) }}</div>
-            <i class="bi bi-wallet2 position-absolute top-0 end-0 m-3 text-muted"></i>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card stat-card p-4">
-            <div class="stat-label">Score Financeiro</div>
-            <div class="stat-value">{{ financial_score.score if financial_score else 0 }}</div>
-            <i class="bi bi-trophy position-absolute top-0 end-0 m-3 text-muted"></i>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card stat-card p-4">
-            <div class="stat-label">Taxa de Poupança</div>
-            <div class="stat-value">{{ "%.1f"|format(financial_score.savings_rate if financial_score else 0) }}%</div>
-            <i class="bi bi-piggy-bank position-absolute top-0 end-0 m-3 text-muted"></i>
+            <div class="stat-label">Categorias</div>
+            <div class="stat-value">{{ categories|length }}</div>
+            <i class="bi bi-tags position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
 </div>
 
-<!-- Achievements and Goals -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0"><i class="bi bi-trophy"></i> Conquistas Recentes</h5>
-                <button class="btn btn-sm btn-outline-primary" onclick="showAllAchievements()">
-                    Ver Todas
-                </button>
-            </div>
-            {% if recent_achievements %}
-            <div class="d-flex flex-wrap gap-2">
-                {% for achievement in recent_achievements %}
-                <div class="achievement-badge" title="{{ achievement.description }}">
-                    <span class="achievement-icon">{{ achievement.icon }}</span>
-                    <span class="achievement-name">{{ achievement.name }}</span>
-                    <span class="achievement-points">+{{ achievement.points }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="text-muted small">Começa a registar transações para conquistar achievements!</p>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0"><i class="bi bi-bullseye"></i> Metas Ativas</h5>
-                <button class="btn btn-sm btn-outline-primary" onclick="openGoalModal()">
-                    <i class="bi bi-plus"></i> Nova Meta
-                </button>
-            </div>
-            {% if active_goals %}
-            <div class="goals-container">
-                {% for goal in active_goals %}
-                <div class="goal-item mb-2">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>{{ goal.icon }} {{ goal.name }}</span>
-                        <span class="goal-progress">{{ "%.1f"|format(goal.progress) }}%</span>
-                    </div>
-                    <div class="progress mt-1" style="height: 8px;">
-                        <div class="progress-bar" role="progressbar" 
-                             style="width: {{ goal.progress }}%; background-color: {{ goal.color }};"
-                             aria-valuenow="{{ goal.progress }}" aria-valuemin="0" aria-valuemax="100">
-                        </div>
-                    </div>
-                    <small class="text-muted">€{{ "%.2f"|format(goal.current_amount) }} / €{{ "%.2f"|format(goal.target_amount) }}</small>
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p class="text-muted small">Define metas financeiras para atingir os teus objetivos!</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<!-- Chart Type Selector -->
-<div class="row mb-3">
-    <div class="col-12">
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div class="d-flex flex-wrap gap-2">
-                    <button class="btn chart-btn active" data-chart-type="pie" onclick="showChart('pie', this)">
-                        <i class="bi bi-pie-chart"></i> Pizza
-                    </button>
-                    <button class="btn chart-btn" data-chart-type="line" onclick="showChart('line', this)">
-                        <i class="bi bi-graph-up"></i> Linha
-                    </button>
-                    <button class="btn chart-btn" data-chart-type="bar" onclick="showChart('bar', this)">
-                        <i class="bi bi-bar-chart"></i> Barras
-                    </button>
-                </div>
-                <button class="btn btn-sm btn-outline-primary" onclick="openDashboardSettings()">
-                    <i class="bi bi-gear"></i> Personalizar Dashboard
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0" id="chartTitle">Todas as categorias</h5>
-                <button class="btn btn-sm btn-outline-secondary" id="backToOverviewBtn" style="display: none;" onclick="showOverviewChart()">
-                    <i class="bi bi-arrow-left"></i> Voltar às categorias
-                </button>
-            </div>
-            <div class="chart-container">
-                <canvas id="mainChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Categories Overview with Values -->
+<!-- Categories Overview -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center">
-                <h4 class="mb-0"><i class="bi bi-tags"></i> Categorias e Valores</h4>
+                <h4 class="mb-0"><i class="bi bi-tags"></i> Categorias</h4>
                 <button class="btn btn-sm btn-outline-primary" onclick="openCategoryModal()">
                     <i class="bi bi-pencil"></i> Editar
                 </button>
@@ -233,17 +74,19 @@
             <p class="text-muted small mb-2 mt-2">Clica numa categoria para ver a divisão por subcategoria no gráfico acima.</p>
             <div class="mt-1">
                 {% for category in categories %}
-                    {% set cat_data = category_totals[category.id] if category_totals and category.id in category_totals else {'expense': 0, 'income': 0, 'net': 0} %}
-                    {% set net_value = cat_data['income'] - cat_data['expense'] %}
+                    {% set subcats = category.subcategories|from_json %}
+                    {% set cat_data = category_totals.get(category.id, {}) %}
+                    {% set cat_net = cat_data.get('net', 0) %}
                     <span class="category-badge"
                           data-category-id="{{ category.id }}"
                           data-category-name="{{ category.name }}"
                           data-color="{{ category.color }}"
-                          style="background-color: {{ category.color }}; color: white;"
                           onclick="showCategoryBreakdown(this)">
                         {{ category.emoji }} {{ category.name }}
-                        <span class="ms-2 fw-bold">€{{ "%.2f"|format(net_value) }}</span>
-                        <small class="ms-1 opacity-75">(Receitas: €{{ "%.2f"|format(cat_data['income']) }} | Despesas: €{{ "%.2f"|format(cat_data['expense']) }})</small>
+                        <strong>€{{ "%.2f"|format(cat_net) }}</strong>
+                        {% if subcats %}
+                            <small>({{ subcats|length }} subcategorias)</small>
+                        {% endif %}
                     </span>
                 {% endfor %}
                 {% if not categories %}
@@ -254,46 +97,6 @@
     </div>
 </div>
 
-<!-- Transaction History - Expenses Only -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card p-4">
-            <h5 class="mb-3"><i class="bi bi-clock-history"></i> Histórico de Despesas</h5>
-            {% set expenses = transactions|selectattr('type', 'equalto', 'expense')|list %}
-            {% if expenses %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Valor</th>
-                            <th>Categoria</th>
-                            <th>Subcategoria</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tx in expenses|sort(attribute='timestamp', reverse=true) %}
-                        <tr>
-                            <td>{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
-                            <td class="text-danger fw-bold">
-                                -{{ "%.2f"|format(tx.amount) }}€
-                            </td>
-                            <td>
-                                {% set cat = categories|selectattr('id', 'equalto', tx.category_id)|first %}
-                                {% if cat %}{{ cat.emoji }} {{ cat.name }}{% else %}Categoria apagada{% endif %}
-                            </td>
-                            <td>{{ tx.subcategory_name or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-muted">Ainda não tens despesas registadas.</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
 
 <!-- Category Edit Modal -->
 <div class="modal fade" id="categoryModal" tabindex="-1">
@@ -398,6 +201,236 @@
     </div>
 </div>
 
+
+<!-- Chart Type Selector -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card p-3">
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn chart-btn active" data-chart-type="pie" onclick="showChart('pie', this)">
+                    <i class="bi bi-pie-chart"></i> Pizza
+                </button>
+                <button class="btn chart-btn" data-chart-type="line" onclick="showChart('line', this)">
+                    <i class="bi bi-graph-up"></i> Linha
+                </button>
+                <button class="btn chart-btn" data-chart-type="bar" onclick="showChart('bar', this)">
+                    <i class="bi bi-bar-chart"></i> Barras
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0" id="chartTitle">Todas as categorias</h5>
+                <button class="btn btn-sm btn-outline-secondary" id="backToOverviewBtn" style="display: none;" onclick="showOverviewChart()">
+                    <i class="bi bi-arrow-left"></i> Voltar às categorias
+                </button>
+            </div>
+            <div class="chart-container">
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Total Breakdown Modal -->
+<div class="modal fade" id="totalBreakdownModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Detalhamento do Total</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <h3>Total: €{{ "%.2f"|format(total_income - total_spent) }}</h3>
+                    <p class="text-muted">Ganhos - Gastos</p>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="card p-3 text-center bg-success bg-opacity-10">
+                            <h5 class="text-success">Ganhos</h5>
+                            <h3>€{{ "%.2f"|format(total_income) }}</h3>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card p-3 text-center bg-danger bg-opacity-10">
+                            <h5 class="text-danger">Gastos</h5>
+                            <h3>€{{ "%.2f"|format(total_spent) }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <h6>Por Categoria</h6>
+                <div class="list-group">
+                    {% for category in categories %}
+                        {% set cat_data = category_totals.get(category.id, {}) %}
+                        {% set cat_income = cat_data.get('income', 0) %}
+                        {% set cat_expense = cat_data.get('expense', 0) %}
+                        {% set cat_net = cat_data.get('net', 0) %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="category-color-label" data-color="{{ category.color }}">{{ category.emoji }} {{ category.name }}</span>
+                            </div>
+                            <div>
+                                <span class="badge bg-success">+€{{ "%.2f"|format(cat_income) }}</span>
+                                <span class="badge bg-danger">-€{{ "%.2f"|format(cat_expense) }}</span>
+                                <span class="badge bg-info">Net: €{{ "%.2f"|format(cat_net) }}</span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mandatory Bills Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-receipt"></i> Contas Obrigatórias</h4>
+                <button class="btn btn-sm btn-outline-primary" onclick="openMandatoryBillModal()">
+                    <i class="bi bi-plus"></i> Adicionar
+                </button>
+            </div>
+            <p class="text-muted small mb-2 mt-2">Lista de contas mensais que precisam ser pagas. Renova automaticamente no dia definido.</p>
+            <div class="mt-3">
+                {% if mandatory_bills %}
+                    <div class="list-group">
+                        {% for bill in mandatory_bills %}
+                            {% set cat = categories|selectattr('id', 'equalto', bill.category_id)|first %}
+                            {% set current_month = now().month %}
+                            {% set current_year = now().year %}
+                            {% set is_paid = bill.last_paid_month == current_month and bill.last_paid_year == current_year %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center">
+                                    <input type="checkbox" class="form-check-input me-3 bill-payment-toggle"
+                                           data-bill-id="{{ bill.id }}"
+                                           {% if is_paid %}checked{% endif %}>
+                                    <div>
+                                        <strong>{{ bill.name }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            {% if cat %}{{ cat.emoji }} {{ cat.name }}{% endif %} | 
+                                            Vence dia {{ bill.due_day }} | 
+                                            €{{ "%.2f"|format(bill.amount) }}
+                                        </small>
+                                    </div>
+                                </div>
+                                <div>
+                                    {% if is_paid %}
+                                        <span class="badge bg-success">Pago</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">Pendente</span>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-outline-danger ms-2 delete-bill-btn" data-bill-id="{{ bill.id }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">Ainda não tens contas obrigatórias definidas.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mandatory Bill Modal -->
+<div class="modal fade" id="mandatoryBillModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Adicionar Conta Obrigatória</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="mandatoryBillForm">
+                    <div class="mb-3">
+                        <label class="form-label">Nome da Conta</label>
+                        <input type="text" class="form-control" id="billName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor (€)</label>
+                        <input type="number" step="0.01" class="form-control" id="billAmount" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria</label>
+                        <select class="form-select" id="billCategory" required>
+                            {% for category in categories %}
+                                <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Dia de Vencimento (1-31)</label>
+                        <input type="number" min="1" max="31" class="form-control" id="billDueDay" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Guardar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transaction History -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card p-4">
+            <h5 class="mb-3"><i class="bi bi-clock-history"></i> Histórico de Transações</h5>
+            {% if transactions %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Quantia</th>
+                            <th>Categoria</th>
+                            <th>Subcategoria</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in transactions|sort(attribute='timestamp', reverse=true) %}
+                        <tr>
+                            <td>{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>
+                                {% if tx.type == 'income' %}
+                                    <span class="badge bg-success">Ganho</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Gasto</span>
+                                {% endif %}
+                            </td>
+                            <td class="{% if tx.type == 'income' %}text-success{% else %}text-danger{% endif %} fw-bold">
+                                {% if tx.type == 'income' %}+{% endif %}{{ "%.2f"|format(tx.amount) }}€
+                            </td>
+                            <td>
+                                {% set cat = categories|selectattr('id', 'equalto', tx.category_id)|first %}
+                                {% if cat %}{{ cat.emoji }} {{ cat.name }}{% else %}Categoria apagada{% endif %}
+                            </td>
+                            <td>{{ tx.subcategory_name or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">Ainda não tens transações registadas.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <!-- Move Money Modal -->
 <div class="modal fade" id="moveMoneyModal" tabindex="-1">
     <div class="modal-dialog">
@@ -421,80 +454,11 @@
     </div>
 </div>
 
-<!-- Dashboard Settings Modal -->
-<div class="modal fade" id="dashboardSettingsModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-gear"></i> Personalizar Dashboard</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Widgets Visíveis</label>
-                    <div class="d-flex flex-wrap gap-2" id="widgetToggles">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-stats" checked>
-                            <label class="form-check-label" for="widget-stats">Estatísticas</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-charts" checked>
-                            <label class="form-check-label" for="widget-charts">Gráficos</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-categories" checked>
-                            <label class="form-check-label" for="widget-categories">Categorias</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-transactions" checked>
-                            <label class="form-check-label" for="widget-transactions">Transações</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-goals" checked>
-                            <label class="form-check-label" for="widget-goals">Metas</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="widget-achievements" checked>
-                            <label class="form-check-label" for="widget-achievements">Conquistas</label>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">Cor do Tema</label>
-                    <input type="color" class="form-control form-control-color" id="themeColor" value="#2563eb">
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">Gráfico Padrão</label>
-                    <select class="form-select" id="defaultChartType">
-                        <option value="pie">Pizza</option>
-                        <option value="line">Linha</option>
-                        <option value="bar">Barras</option>
-                    </select>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="saveDashboardSettings()">Guardar Configurações</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {# Os dados vindos do Jinja ficam isolados aqui, em tags script type=application/json.
    Esse tipo de script nao e executado nem validado como JavaScript pelo navegador ou
    pelo editor, entao as expressoes Jinja nunca sao interpretadas como JS/CSS quebrado. #}
-{% if categories_json %}
 <script type="application/json" id="categories-data">{{ categories_json|tojson }}</script>
-{% else %}
-<script type="application/json" id="categories-data">[]</script>
-{% endif %}
-{% if category_totals %}
 <script type="application/json" id="category-totals-data">{{ category_totals|tojson }}</script>
-{% else %}
-<script type="application/json" id="category-totals-data">{}</script>
-{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -508,12 +472,9 @@
     const categoryNames = allCategories.map(c => c.name);
     const categoryIds = allCategories.map(c => c.id);
     const categoryColors = allCategories.map(c => c.color);
-    
-    // Calculate expense values for chart (show only expenses for better visualization)
-    const dataValues = categoryIds.map(id => {
-        const catData = categoryTotals[id] || { expense: 0, income: 0, net: 0 };
-        return catData.expense; // Show expenses in chart
-    });
+    // FIX: categoryTotals[id] é um objeto {income, expense, net} — usar .net,
+    // não o objeto inteiro, senão o Chart.js recebe NaN/[object Object].
+    const dataValues = categoryIds.map(id => (categoryTotals[id] && categoryTotals[id].net) || 0);
 
     let mainChart = null;
     let currentCategoryId = null;
@@ -524,6 +485,19 @@
     let currentLabels = categoryNames;
     let currentValues = dataValues;
     let currentColors = categoryColors;
+
+    // Aplica as cores das categorias (badges) a partir de data-color
+    document.querySelectorAll('.category-badge[data-color]').forEach(el => {
+        const color = el.dataset.color;
+        el.style.backgroundColor = color + '20';
+        el.style.border = `2px solid ${color}`;
+        el.style.color = '#333';
+    });
+
+    // Aplica a cor do texto no detalhamento por categoria (modal de total)
+    document.querySelectorAll('.category-color-label[data-color]').forEach(el => {
+        el.style.color = el.dataset.color;
+    });
 
     function renderChart(type) {
         currentChartType = type;
@@ -822,93 +796,6 @@
         }
     }
 
-    // Dashboard Settings Functions
-    async function openDashboardSettings() {
-        try {
-            const response = await fetch('/api/dashboard/config');
-            const config = await response.json();
-            
-            // Load current settings
-            document.getElementById('themeColor').value = config.theme_color || '#2563eb';
-            document.getElementById('defaultChartType').value = config.default_chart_type || 'pie';
-            
-            // Set widget checkboxes
-            const widgets = config.visible_widgets || ['stats', 'charts', 'categories', 'transactions'];
-            document.getElementById('widget-stats').checked = widgets.includes('stats');
-            document.getElementById('widget-charts').checked = widgets.includes('charts');
-            document.getElementById('widget-categories').checked = widgets.includes('categories');
-            document.getElementById('widget-transactions').checked = widgets.includes('transactions');
-            document.getElementById('widget-goals').checked = widgets.includes('goals');
-            document.getElementById('widget-achievements').checked = widgets.includes('achievements');
-            
-            const modal = new bootstrap.Modal(document.getElementById('dashboardSettingsModal'));
-            modal.show();
-        } catch (error) {
-            console.error('Error loading dashboard settings:', error);
-        }
-    }
-
-    async function saveDashboardSettings() {
-        const visibleWidgets = [];
-        if (document.getElementById('widget-stats').checked) visibleWidgets.push('stats');
-        if (document.getElementById('widget-charts').checked) visibleWidgets.push('charts');
-        if (document.getElementById('widget-categories').checked) visibleWidgets.push('categories');
-        if (document.getElementById('widget-transactions').checked) visibleWidgets.push('transactions');
-        if (document.getElementById('widget-goals').checked) visibleWidgets.push('goals');
-        if (document.getElementById('widget-achievements').checked) visibleWidgets.push('achievements');
-        
-        const config = {
-            visible_widgets: visibleWidgets,
-            theme_color: document.getElementById('themeColor').value,
-            default_chart_type: document.getElementById('defaultChartType').value,
-            chart_preferences: {
-                default_type: document.getElementById('defaultChartType').value
-            }
-        };
-        
-        try {
-            const response = await fetch('/api/dashboard/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config)
-            });
-            
-            if (response.ok) {
-                const modal = bootstrap.Modal.getInstance(document.getElementById('dashboardSettingsModal'));
-                modal.hide();
-                showToast('Configurações guardadas com sucesso!', 'success');
-                location.reload();
-            }
-        } catch (error) {
-            console.error('Error saving dashboard settings:', error);
-            showToast('Erro ao guardar configurações.', 'error');
-        }
-    }
-
-    function applyDashboardConfig(config) {
-        // Apply theme color
-        if (config.theme_color) {
-            document.documentElement.style.setProperty('--primary-color', config.theme_color);
-        }
-        
-        // Show/hide widgets based on configuration
-        const widgets = config.visible_widgets || [];
-        
-        const statsWidget = document.querySelector('.row.mb-4'); // Stats cards
-        const chartsWidget = document.querySelector('.chart-container').closest('.row.mb-4');
-        const categoriesWidget = document.querySelector('.card:has(.category-badge)').closest('.row.mb-4');
-        const transactionsWidget = document.querySelector('.table-responsive').closest('.row.mb-4');
-        
-        if (statsWidget) statsWidget.style.display = widgets.includes('stats') ? 'block' : 'none';
-        if (chartsWidget) chartsWidget.style.display = widgets.includes('charts') ? 'block' : 'none';
-        if (categoriesWidget) categoriesWidget.style.display = widgets.includes('categories') ? 'block' : 'none';
-        if (transactionsWidget) transactionsWidget.style.display = widgets.includes('transactions') ? 'block' : 'none';
-    }
-        } catch (error) {
-            console.error('Error saving category:', error);
-        }
-    }
-
     async function addCategory() {
         resetCategoryForm();
         saveCategory();
@@ -1055,6 +942,112 @@
     window.closeMoveMoneyModal = closeMoveMoneyModal;
     window.confirmDeleteWithMove = confirmDeleteWithMove;
     window.addSubcategory = addSubcategory;
+
+    // Total Breakdown Modal
+    function showTotalBreakdown() {
+        const modal = new bootstrap.Modal(document.getElementById('totalBreakdownModal'));
+        modal.show();
+    }
+    window.showTotalBreakdown = showTotalBreakdown;
+
+    // Mandatory Bills Functions
+    function openMandatoryBillModal() {
+        const modal = new bootstrap.Modal(document.getElementById('mandatoryBillModal'));
+        modal.show();
+    }
+    window.openMandatoryBillModal = openMandatoryBillModal;
+
+    function toggleBillPayment(billId, isPaid) {
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+
+        fetch('/api/mandatory-bill/payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bill_id: billId,
+                is_paid: isPaid,
+                month: currentMonth,
+                year: currentYear
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erro ao atualizar estado da conta: ' + (data.error || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erro ao comunicar com o servidor');
+        });
+    }
+
+    function deleteMandatoryBill(billId) {
+        if (!confirm('Tem a certeza que deseja remover esta conta obrigatória?')) return;
+
+        fetch('/api/mandatory-bill/' + billId, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erro ao remover conta: ' + (data.error || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erro ao comunicar com o servidor');
+        });
+    }
+
+    // Liga os checkboxes de pagamento e botões de remover das contas obrigatórias
+    document.querySelectorAll('.bill-payment-toggle').forEach(el => {
+        el.addEventListener('change', function () {
+            toggleBillPayment(parseInt(this.dataset.billId, 10), this.checked);
+        });
+    });
+    document.querySelectorAll('.delete-bill-btn').forEach(el => {
+        el.addEventListener('click', function () {
+            deleteMandatoryBill(parseInt(this.dataset.billId, 10));
+        });
+    });
+
+    // Mandatory Bill Form
+    document.getElementById('mandatoryBillForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const billData = {
+            name: document.getElementById('billName').value,
+            amount: parseFloat(document.getElementById('billAmount').value),
+            category_id: parseInt(document.getElementById('billCategory').value),
+            due_day: parseInt(document.getElementById('billDueDay').value)
+        };
+
+        fetch('/api/mandatory-bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(billData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('mandatoryBillModal')).hide();
+                document.getElementById('mandatoryBillForm').reset();
+                location.reload();
+            } else {
+                alert('Erro ao adicionar conta: ' + (data.error || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erro ao comunicar com o servidor');
+        });
+    });
 })();
 </script>
 {% endblock %}
