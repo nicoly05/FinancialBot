@@ -14,28 +14,12 @@
             --bg-light: #f8fafc;
             --text-dark: #1e293b;
             --text-light: #64748b;
-            --card-bg: #ffffff;
-            --border-color: #e2e8f0;
-            --shadow-color: rgba(0, 0, 0, 0.1);
-        }
-        
-        [data-theme="dark"] {
-            --primary-color: #3b82f6;
-            --secondary-color: #2563eb;
-            --accent-color: #60a5fa;
-            --bg-light: #0f172a;
-            --text-dark: #f1f5f9;
-            --text-light: #94a3b8;
-            --card-bg: #1e293b;
-            --border-color: #334155;
-            --shadow-color: rgba(0, 0, 0, 0.3);
         }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg-light);
             color: var(--text-dark);
-            transition: background-color 0.3s ease, color 0.3s ease;
         }
         
         .navbar {
@@ -61,14 +45,12 @@
         .card {
             border: none;
             border-radius: 12px;
-            box-shadow: 0 4px 6px var(--shadow-color);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
             transition: all 0.3s ease;
-            background-color: var(--card-bg);
         }
         
         .card:hover {
-            box-shadow: 0 8px 15px var(--shadow-color);
-            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
         }
         
         .btn-primary {
@@ -150,110 +132,6 @@
             font-size: 0.875rem;
             font-weight: 500;
             margin: 4px;
-            transition: all 0.3s ease;
-        }
-        
-        .category-badge:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
-        /* Animations */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-        
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
-        }
-        
-        .animate-slide-in {
-            animation: slideIn 0.5s ease-out;
-        }
-        
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-out;
-        }
-        
-        .animate-pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        .animate-shake {
-            animation: shake 0.5s ease-in-out;
-        }
-        
-        /* Button interactions */
-        .btn {
-            transition: all 0.3s ease;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-        }
-        
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        /* Loading animation */
-        .loading-spinner {
-            border: 3px solid rgba(0, 0, 0, 0.1);
-            border-radius: 50%;
-            border-top: 3px solid var(--primary-color);
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Toast notifications */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            border-radius: 8px;
-            background: var(--card-bg);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1000;
-            animation: slideIn 0.3s ease-out;
-            border-left: 4px solid var(--primary-color);
-        }
-        
-        .toast.success {
-            border-left-color: #10b981;
-        }
-        
-        .toast.error {
-            border-left-color: #ef4444;
-        }
-        
-        .toast.warning {
-            border-left-color: #f59e0b;
         }
     </style>
     {% block extra_css %}{% endblock %}
@@ -279,24 +157,6 @@
                         <a class="nav-link" href="{{ url_for('chat') }}">
                             <i class="bi bi-chat-dots"></i> Chat
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('reports') }}">
-                            <i class="bi bi-file-earmark-bar-graph"></i> Relatórios
-                        </a>
-                    </li>
-                    <li class="nav-item position-relative">
-                        <a class="nav-link" href="#" onclick="showAlerts(); return false;">
-                            <i class="bi bi-bell"></i>
-                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" id="alertBadge">
-                                0
-                            </span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link btn btn-link" id="themeToggle" onclick="toggleTheme()">
-                            <i class="bi bi-moon"></i>
-                        </button>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">
@@ -326,194 +186,6 @@
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        // Theme Toggle
-        function toggleTheme() {
-            const body = document.body;
-            const currentTheme = body.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            body.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            
-            const icon = document.querySelector('#themeToggle i');
-            icon.className = newTheme === 'dark' ? 'bi bi-sun' : 'bi bi-moon';
-        }
-        
-        // Load saved theme
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.body.setAttribute('data-theme', savedTheme);
-            const icon = document.querySelector('#themeToggle i');
-            icon.className = savedTheme === 'dark' ? 'bi bi-sun' : 'bi bi-moon';
-            
-            // Check for alerts
-            checkAlerts();
-        });
-        
-        // Alert System
-        async function checkAlerts() {
-            try {
-                const response = await fetch('/api/alerts');
-                const alerts = await response.json();
-                
-                const unreadCount = alerts.filter(a => !a.is_read).length;
-                const badge = document.getElementById('alertBadge');
-                
-                if (unreadCount > 0) {
-                    badge.textContent = unreadCount;
-                    badge.classList.remove('d-none');
-                } else {
-                    badge.classList.add('d-none');
-                }
-            } catch (error) {
-                console.error('Error checking alerts:', error);
-            }
-        }
-        
-        async function showAlerts() {
-            try {
-                const response = await fetch('/api/alerts');
-                const alerts = await response.json();
-                
-                if (alerts.length === 0) {
-                    showToast('Não tens alertas novos.', 'info');
-                    return;
-                }
-                
-                let alertHTML = '<div class="card">';
-                alertHTML += '<div class="card-header d-flex justify-content-between align-items-center">';
-                alertHTML += '<h5 class="mb-0"><i class="bi bi-bell"></i> Alertas</h5>';
-                alertHTML += '<button class="btn btn-sm btn-outline-primary" onclick="markAllRead()">Marcar todos como lidos</button>';
-                alertHTML += '</div>';
-                alertHTML += '<div class="card-body">';
-                
-                alerts.forEach(alert => {
-                    const severityClass = alert.severity === 'critical' ? 'border-danger' : 
-                                        alert.severity === 'warning' ? 'border-warning' : 'border-info';
-                    const bgClass = alert.severity === 'critical' ? 'bg-danger' : 
-                                   alert.severity === 'warning' ? 'bg-warning' : 'bg-info';
-                    
-                    alertHTML += `<div class="alert alert-${alert.severity} mb-2 ${alert.is_read ? 'opacity-50' : ''}" data-alert-id="${alert.id}">`;
-                    alertHTML += `<div class="d-flex justify-content-between align-items-start">`;
-                    alertHTML += `<div>`;
-                    alertHTML += `<strong>${alert.title}</strong><br>`;
-                    alertHTML += `<small>${alert.message}</small><br>`;
-                    alertHTML += `<small class="text-muted">${new Date(alert.created_at).toLocaleString()}</small>`;
-                    alertHTML += `</div>`;
-                    if (!alert.is_read) {
-                        alertHTML += `<button class="btn btn-sm btn-outline-secondary ms-2" onclick="markAlertRead(${alert.id})">`;
-                        alertHTML += `<i class="bi bi-check"></i>`;
-                        alertHTML += `</button>`;
-                    }
-                    alertHTML += `</div>`;
-                    alertHTML += `</div>`;
-                });
-                
-                alertHTML += '</div></div>';
-                
-                // Show modal with alerts
-                const modal = document.createElement('div');
-                modal.className = 'modal fade';
-                modal.id = 'alertsModal';
-                modal.innerHTML = `
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title"><i class="bi bi-bell"></i> Alertas</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                ${alerts.map(alert => `
-                                    <div class="alert alert-${alert.severity} mb-2 ${alert.is_read ? 'opacity-50' : ''}" data-alert-id="${alert.id}">
-                                        <div class="d-flex justify-content-between align-items-start">
-                                            <div>
-                                                <strong>${alert.title}</strong><br>
-                                                <small>${alert.message}</small><br>
-                                                <small class="text-muted">${new Date(alert.created_at).toLocaleString()}</small>
-                                            </div>
-                                            ${!alert.is_read ? `
-                                                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="markAlertRead(${alert.id})">
-                                                    <i class="bi bi-check"></i>
-                                                </button>
-                                            ` : ''}
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                document.body.appendChild(modal);
-                const bootstrapModal = new bootstrap.Modal(modal);
-                bootstrapModal.show();
-                
-                modal.addEventListener('hidden.bs.modal', () => {
-                    modal.remove();
-                    checkAlerts();
-                });
-                
-            } catch (error) {
-                console.error('Error showing alerts:', error);
-                showToast('Erro ao carregar alertas.', 'error');
-            }
-        }
-        
-        async function markAlertRead(alertId) {
-            try {
-                await fetch(`/api/alerts/${alertId}/read`, { method: 'POST' });
-                const alertElement = document.querySelector(`[data-alert-id="${alertId}"]`);
-                if (alertElement) {
-                    alertElement.classList.add('opacity-50');
-                    const button = alertElement.querySelector('button');
-                    if (button) button.remove();
-                }
-                checkAlerts();
-            } catch (error) {
-                console.error('Error marking alert as read:', error);
-            }
-        }
-        
-        async function markAllRead() {
-            try {
-                const response = await fetch('/api/alerts');
-                const alerts = await response.json();
-                
-                const unreadAlerts = alerts.filter(a => !a.is_read);
-                for (const alert of unreadAlerts) {
-                    await fetch(`/api/alerts/${alert.id}/read`, { method: 'POST' });
-                }
-                
-                // Close modal and refresh
-                const modal = bootstrap.Modal.getInstance(document.getElementById('alertsModal'));
-                if (modal) modal.hide();
-                
-                checkAlerts();
-                showToast('Todos os alertas marcados como lidos!', 'success');
-            } catch (error) {
-                console.error('Error marking all alerts as read:', error);
-            }
-        }
-        
-        // Toast notifications
-        function showToast(message, type = 'info') {
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'info-circle'} me-2"></i>
-                    <span>${message}</span>
-                </div>
-            `;
-            
-            document.body.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
