@@ -30,6 +30,36 @@
 
     .category-badge {
         cursor: pointer;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+
+    .category-badge:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .category-amount {
+        opacity: 0;
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: white;
+        padding: 6px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        white-space: nowrap;
+        z-index: 10;
+        transition: all 0.3s ease;
+        pointer-events: none;
+    }
+
+    .category-badge:hover .category-amount {
+        opacity: 1;
+        top: -12px;
+        right: -12px;
     }
 </style>
 {% endblock %}
@@ -59,6 +89,14 @@
             <i class="bi bi-tags position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
+    <div class="col-md-4">
+        <div class="card stat-card p-4" style="cursor: pointer;" onclick="document.querySelector('#mandatory-bills-section').scrollIntoView({behavior: 'smooth'})">
+            <div class="stat-label">Contas Pendentes</div>
+            <div class="stat-value">{{ pending_bills_count }}</div>
+            <small class="text-muted">Para pagar este mês</small>
+            <i class="bi bi-receipt position-absolute top-0 end-0 m-3 text-muted"></i>
+        </div>
+    </div>
 </div>
 
 <!-- Categories Overview -->
@@ -80,10 +118,14 @@
                     <span class="category-badge"
                           data-category-id="{{ category.id }}"
                           data-category-name="{{ category.name }}"
+                          data-category-net="{{ cat_net }}"
                           data-color="{{ category.color }}"
-                          onclick="showCategoryBreakdown(this)">
+                          onclick="showCategoryBreakdown(this)"
+                          style="background-color: {{ category.color }}20; border: 2px solid {{ category.color }};">
                         {{ category.emoji }} {{ category.name }}
-                        <strong>€{{ "%.2f"|format(cat_net) }}</strong>
+                        <span class="category-amount">
+                            <strong>€{{ "%.2f"|format(cat_net) }}</strong>
+                        </span>
                         {% if subcats %}
                             <small>({{ subcats|length }} subcategorias)</small>
                         {% endif %}
@@ -241,47 +283,66 @@
 
 <!-- Total Breakdown Modal -->
 <div class="modal fade" id="totalBreakdownModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Detalhamento do Total</h5>
+                <h5 class="modal-title">Detalhamento Financeiro</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="text-center mb-3">
-                    <h3>Total: €{{ "%.2f"|format(total_income - total_spent) }}</h3>
+                <div class="text-center mb-4">
+                    <div class="mb-2">
+                        <span class="badge bg-primary fs-6 px-4 py-2">Saldo Total</span>
+                    </div>
+                    <h2 class="display-4 fw-bold" style="background: var(--gradient-main); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        €{{ "%.2f"|format(total_income - total_spent) }}
+                    </h2>
                     <p class="text-muted">Ganhos - Gastos</p>
                 </div>
-                <div class="row">
-                    <div class="col-6">
-                        <div class="card p-3 text-center bg-success bg-opacity-10">
-                            <h5 class="text-success">Ganhos</h5>
-                            <h3>€{{ "%.2f"|format(total_income) }}</h3>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card p-4 text-center border-0" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
+                        <div class="mb-2">
+                            <i class="bi bi-arrow-up-circle-fill text-success fs-4"></i>
                         </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="card p-3 text-center bg-danger bg-opacity-10">
-                            <h5 class="text-danger">Gastos</h5>
-                            <h3>€{{ "%.2f"|format(total_spent) }}</h3>
-                        </div>
+                        <h5 class="text-success fw-bold">Ganhos</h5>
+                        <h3 class="text-success fw-bold">€{{ "%.2f"|format(total_income) }}</h3>
                     </div>
                 </div>
-                <hr>
-                <h6>Por Categoria</h6>
-                <div class="list-group">
+                    <div class="col-md-6">
+                        <div class="card p-4 text-center border-0" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
+                        <div class="mb-2">
+                            <i class="bi bi-arrow-down-circle-fill text-danger fs-4"></i>
+                        </div>
+                        <h5 class="text-danger fw-bold">Gastos</h5>
+                        <h3 class="text-danger fw-bold">€{{ "%.2f"|format(total_spent) }}</h3>
+                    </div>
+                </div>
+                </div>
+
+                <hr class="my-4">
+
+                <h6 class="fw-bold mb-3">Detalhamento por Categoria</h6>
+                <div class="list-group list-group-flush">
                     {% for category in categories %}
                         {% set cat_data = category_totals.get(category.id, {}) %}
                         {% set cat_income = cat_data.get('income', 0) %}
                         {% set cat_expense = cat_data.get('expense', 0) %}
                         {% set cat_net = cat_data.get('net', 0) %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <span class="category-color-label" data-color="{{ category.color }}">{{ category.emoji }} {{ category.name }}</span>
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3 border-bottom">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3" style="width: 40px; height: 40px; border-radius: 50%; background: {{ category.color }}20; display: flex; align-items: center; justify-content: center;">
+                                    <span style="font-size: 1.2rem;">{{ category.emoji }}</span>
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ category.name }}</div>
+                                    <small class="text-muted">Net: €{{ "%.2f"|format(cat_net) }}</small>
+                                </div>
                             </div>
-                            <div>
+                            <div class="d-flex gap-2">
                                 <span class="badge bg-success">+€{{ "%.2f"|format(cat_income) }}</span>
                                 <span class="badge bg-danger">-€{{ "%.2f"|format(cat_expense) }}</span>
-                                <span class="badge bg-info">Net: €{{ "%.2f"|format(cat_net) }}</span>
                             </div>
                         </div>
                     {% endfor %}
@@ -387,10 +448,35 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card p-4">
-            <h5 class="mb-3"><i class="bi bi-clock-history"></i> Histórico de Transações</h5>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Histórico de Transações</h5>
+            </div>
+
+            <!-- Filters -->
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <select class="form-select" id="filterType" onchange="filterTransactions()">
+                        <option value="all">Todos os tipos</option>
+                        <option value="income">Apenas Ganhos</option>
+                        <option value="expense">Apenas Gastos</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="filterCategory" onchange="filterTransactions()">
+                        <option value="all">Todas as categorias</option>
+                        {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" class="form-control" id="filterSearch" placeholder="Pesquisar..." onkeyup="filterTransactions()">
+                </div>
+            </div>
+
             {% if transactions %}
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-hover" id="transactionsTable">
                     <thead>
                         <tr>
                             <th>Data</th>
@@ -402,7 +488,7 @@
                     </thead>
                     <tbody>
                         {% for tx in transactions|sort(attribute='timestamp', reverse=true) %}
-                        <tr>
+                        <tr data-type="{{ tx.type }}" data-category="{{ tx.category_id }}" data-search="{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }} {{ tx.amount }}">
                             <td>{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
                             <td>
                                 {% if tx.type == 'income' %}
@@ -472,9 +558,14 @@
     const categoryNames = allCategories.map(c => c.name);
     const categoryIds = allCategories.map(c => c.id);
     const categoryColors = allCategories.map(c => c.color);
-    // FIX: categoryTotals[id] é um objeto {income, expense, net} — usar .net,
-    // não o objeto inteiro, senão o Chart.js recebe NaN/[object Object].
-    const dataValues = categoryIds.map(id => (categoryTotals[id] && categoryTotals[id].net) || 0);
+    // Usar o valor líquido (ganhos - gastos) para mostrar quanto dinheiro tem em cada categoria
+    const dataValues = categoryIds.map(id => {
+        const catData = categoryTotals[id];
+        if (catData && typeof catData === 'object') {
+            return catData.net || 0;
+        }
+        return 0;
+    });
 
     let mainChart = null;
     let currentCategoryId = null;
@@ -492,6 +583,27 @@
         el.style.backgroundColor = color + '20';
         el.style.border = `2px solid ${color}`;
         el.style.color = '#333';
+    });
+
+    // Mostra valores das categorias no hover
+    document.querySelectorAll('.category-badge').forEach(badge => {
+        badge.addEventListener('mouseenter', function() {
+            const amount = this.querySelector('.category-amount');
+            if (amount) {
+                amount.style.opacity = '1';
+                amount.style.top = '-12px';
+                amount.style.right = '-12px';
+            }
+        });
+
+        badge.addEventListener('mouseleave', function() {
+            const amount = this.querySelector('.category-amount');
+            if (amount) {
+                amount.style.opacity = '0';
+                amount.style.top = '-8px';
+                amount.style.right = '-8px';
+            }
+        });
     });
 
     // Aplica a cor do texto no detalhamento por categoria (modal de total)
@@ -1048,6 +1160,37 @@
             alert('Erro ao comunicar com o servidor');
         });
     });
+
+    // Transaction Filtering
+    function filterTransactions() {
+        const typeFilter = document.getElementById('filterType').value;
+        const categoryFilter = document.getElementById('filterCategory').value;
+        const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+
+        const rows = document.querySelectorAll('#transactionsTable tbody tr');
+
+        rows.forEach(row => {
+            const type = row.getAttribute('data-type');
+            const category = row.getAttribute('data-category');
+            const searchContent = row.getAttribute('data-search').toLowerCase();
+
+            let showRow = true;
+
+            if (typeFilter !== 'all' && type !== typeFilter) {
+                showRow = false;
+            }
+
+            if (categoryFilter !== 'all' && category !== categoryFilter) {
+                showRow = false;
+            }
+
+            if (searchFilter && !searchContent.includes(searchFilter)) {
+                showRow = false;
+            }
+
+            row.style.display = showRow ? '' : 'none';
+        });
+    }
 })();
 </script>
 {% endblock %}

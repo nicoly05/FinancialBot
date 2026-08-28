@@ -1,0 +1,620 @@
+PROMPT — SISTEMA DE ORGANIZAÇÃO FINANCEIRA PERSONALIZADA
+Quero criar dentro do meu aplicativo um sistema de organização financeira personalizada, baseado em um formulário de diagnóstico financeiro.
+O objetivo é fazer com que o usuário responda algumas perguntas sobre sua renda, gastos, prioridades, objetivos e situação financeira. A partir dessas respostas, o sistema deverá:
+
+Entender a realidade financeira do usuário.
+Identificar suas principais prioridades.
+Identificar seus gastos fixos e variáveis.
+Identificar objetivos financeiros de curto, médio e longo prazo.
+Distribuir a renda mensal do usuário em categorias.
+Recomendar uma porcentagem da renda para cada categoria.
+Converter as porcentagens em valores monetários.
+Criar automaticamente "pastas", "caixinhas" ou "objetivos" financeiros.
+Criar metas de economia para cada objetivo.
+Gerar um checklist mensal para o usuário acompanhar.
+Mostrar o progresso de cada objetivo.
+1. ESTRUTURA PRINCIPAL
+O sistema deverá trabalhar inicialmente com 5 categorias principais:
+01 — Segurança / Futuro / Aposentadoria
+Destinada à proteção financeira e construção de patrimônio.
+Pode incluir:
+
+Reserva de emergência
+Aposentadoria
+Previdência
+Investimentos de longo prazo
+Fundo para imprevistos
+Independência financeira
+Outros objetivos de longo prazo
+02 — Gastos Fixos
+Destinada aos gastos recorrentes mensais.
+Exemplos:
+
+Aluguel
+Prestação da casa
+Condomínio
+Água
+Luz
+Gás
+Internet
+Telefone
+Supermercado
+Gasolina
+Transporte
+Seguro
+Plano de saúde
+Academia
+Salão
+Barbearia
+Manicure
+Pet shop
+Ração
+Veterinário
+Spotify
+Netflix
+Amazon
+Aplicativos
+Assinaturas
+Outros gastos recorrentes
+Cada gasto deverá poder ser classificado como:
+Essencial
+Importante
+Opcional
+03 — Investimento Pessoal
+Destinada ao desenvolvimento pessoal e qualidade de vida.
+Exemplos:
+
+Cursos
+Educação
+Faculdade
+Pós-graduação
+Idiomas
+Livros
+Saúde
+Academia
+Terapia
+Hobbies
+Desenvolvimento profissional
+Beleza
+Lazer pessoal
+Outros
+04 — Viagens
+Destinada a viagens e experiências.
+O usuário deverá poder criar diferentes objetivos.
+
+Exemplo:
+
+"Viagem para Paris"
+
+O objetivo deverá permitir:
+
+Nome da viagem
+Valor total necessário
+Valor já guardado
+Valor restante
+Data da viagem
+Número de meses restantes
+Valor recomendado para guardar mensalmente
+Progresso em porcentagem
+05 — Casa Própria / Grandes Objetivos
+Destinada a objetivos financeiros grandes e de longo prazo.
+Exemplos:
+
+Entrada da casa
+Compra de imóvel
+Reforma
+Móveis
+Carro
+Mudança
+Casamento
+Negócio próprio
+Outros grandes objetivos
+O usuário deverá poder criar um objetivo personalizado.
+2. FORMULÁRIO DE DIAGNÓSTICO
+O formulário deverá ser dividido em etapas para não ficar cansativo.
+ETAPA 1 — RENDA
+Perguntar:
+Qual é sua renda líquida mensal?
+Sua renda é:
+Fixa
+Variável
+Fixa + variável
+Você possui outras fontes de renda?
+Qual é o valor médio mensal dessas outras fontes?
+Quantas pessoas dependem financeiramente de você?
+Você divide as despesas da casa com alguém?
+O sistema deverá calcular automaticamente:
+Renda mensal disponível = renda principal + outras rendas
+
+3. ETAPA 2 — DÍVIDAS
+Perguntar:
+Você possui dívidas atualmente?
+Qual o valor total aproximado das suas dívidas?
+Quanto paga mensalmente em parcelas?
+Possui cartão de crédito parcelado?
+Possui empréstimos?
+Possui financiamento?
+Possui cheque especial ou dívida de curto prazo?
+Existe alguma dívida que considera urgente?
+Caso existam dívidas relevantes, o sistema deverá aumentar a prioridade de quitação antes de recomendar grandes aportes para objetivos secundários.
+4. ETAPA 3 — GASTOS FIXOS
+Criar uma interface onde o usuário possa adicionar seus gastos.
+Cada gasto deverá possuir:
+
+Nome
+Categoria
+Valor mensal
+Frequência
+Essencial? Sim/Não
+Importância: 1–10
+Possibilidade de redução: Sim/Não
+Exemplo:
+Aluguel — €800 — Essencial — 10/10
+
+Spotify — €8 — Opcional — 3/10
+
+Gasolina — €150 — Importante — 8/10
+
+Supermercado — €350 — Essencial — 10/10
+
+O sistema deverá calcular:
+
+Total de gastos fixos
+
+e:
+
+Percentual da renda comprometido com gastos fixos
+
+Fórmula:
+
+gastos fixos ÷ renda líquida × 100
+
+5. ETAPA 4 — SEGURANÇA FINANCEIRA
+Perguntar:
+Você possui reserva de emergência?
+Não tenho
+Menos de 1 mês dos meus gastos
+1–3 meses
+3–6 meses
+Mais de 6 meses
+Qual valor possui atualmente em reserva?
+Você possui investimentos?
+Quanto possui investido?
+Você investe mensalmente?
+Quanto investe?
+Você possui previdência?
+Você contribui para aposentadoria?
+Qual sua idade?
+Com que idade gostaria de alcançar independência financeira?
+O sistema deverá estimar uma meta de reserva de emergência com base nos gastos essenciais do usuário.
+Exemplo:
+
+Gastos essenciais = €1.500/mês
+
+Meta de reserva:
+
+€1.500 × 6 = €9.000
+
+A meta deverá poder ser ajustada pelo usuário.
+
+6. ETAPA 5 — PRIORIDADES DE VIDA
+Esta é uma das partes mais importantes do sistema.
+Perguntar:
+
+"Quais são seus principais objetivos financeiros?"
+
+Permitir selecionar vários:
+
+Reserva de emergência
+Aposentadoria
+Investimentos
+Comprar uma casa
+Comprar um carro
+Viajar
+Fazer cursos
+Faculdade/pós-graduação
+Abrir um negócio
+Casamento
+Ter filhos
+Reforma da casa
+Mudar de cidade/país
+Independência financeira
+Outro
+Depois pedir para o usuário ordenar os objetivos por prioridade.
+Exemplo:
+
+Comprar minha casa
+Reserva de emergência
+Viajar
+Fazer uma pós-graduação
+Comprar um carro
+7. AVALIAÇÃO DE CADA OBJETIVO
+Para cada objetivo selecionado, perguntar:
+Importância
+"De 0 a 10, quanto esse objetivo é importante para você?"
+Prazo
+"Quando você gostaria de realizar esse objetivo?"
+Até 6 meses
+6–12 meses
+1–3 anos
+3–5 anos
+Mais de 5 anos
+Ainda não sei
+Valor
+"Quanto você acredita que precisa para realizar esse objetivo?"
+Valor atual
+"Quanto você já possui guardado para esse objetivo?"
+Contribuição
+"Você já guarda dinheiro mensalmente para esse objetivo?"
+Se sim:
+
+"Quanto?"
+
+8. PERGUNTA SOBRE ESTILO DE VIDA
+Adicionar uma pergunta importante:
+"Quanto dinheiro você gostaria de ter disponível todos os meses para aproveitar sua vida sem culpa?"
+
+Permitir resposta em valor ou percentual.
+
+Exemplo:
+
+€300/mês.
+
+Esse valor deverá entrar na categoria de investimento pessoal/lazer.
+
+9. PERGUNTA ABERTA
+Adicionar:
+"Se você tivesse dinheiro suficiente, quais seriam as 5 coisas que mais gostaria de realizar nos próximos anos?"
+
+Depois pedir:
+
+"Organize essas prioridades da mais importante para a menos importante."
+
+Essa resposta deverá ajudar o sistema a entender as prioridades emocionais e financeiras do usuário.
+
+10. SISTEMA DE PONTUAÇÃO
+O sistema não deverá simplesmente aplicar uma regra fixa de orçamento para todos.
+A distribuição deverá ser personalizada.
+
+Cada objetivo deverá receber uma pontuação baseada em:
+
+Importância declarada pelo usuário
+Prazo
+Necessidade
+Situação financeira atual
+Existência ou não de reserva
+Existência ou não de dívidas
+Valor necessário
+Valor já guardado
+Capacidade mensal de poupança
+Criar um sistema de prioridade.
+Exemplo conceitual:
+
+Prioridade = importância × urgência × necessidade × situação financeira
+
+Não é necessário utilizar exatamente essa fórmula; criar uma lógica financeira coerente e transparente.
+
+11. DISTRIBUIÇÃO DA RENDA
+Como referência inicial, utilizar:
+Segurança / Futuro / Aposentadoria: 10%–25%
+Gastos Fixos: idealmente até 50%–60%
+Investimento Pessoal: 10%–20%
+Viagens: 5%–15%
+Casa Própria / Grandes Objetivos: 5%–20%
+Esses percentuais NÃO devem ser obrigatórios.
+O sistema deverá ajustá-los conforme o perfil do usuário.
+
+A soma deverá sempre resultar em:
+
+100% da renda
+
+Caso os gastos essenciais já representem uma parcela muito alta da renda, o sistema deverá reduzir temporariamente as categorias de menor prioridade.
+
+12. REGRA DE SEGURANÇA
+O sistema nunca deverá recomendar uma distribuição que deixe o usuário sem dinheiro para seus gastos essenciais.
+Primeiro considerar:
+
+Gastos essenciais
+Dívidas urgentes
+Reserva de emergência
+Objetivos prioritários
+Investimento pessoal
+Viagens e desejos
+A ordem poderá mudar dependendo das respostas do usuário.
+13. CONVERSÃO PARA VALORES
+Depois de definir os percentuais, converter automaticamente para valores.
+Exemplo:
+
+Renda:
+
+€3.000
+
+Distribuição:
+
+Segurança — 15% = €450
+
+Gastos fixos — 50% = €1.500
+
+Investimento pessoal — 10% = €300
+
+Viagens — 10% = €300
+
+Casa própria — 15% = €450
+
+Total:
+
+€3.000 = 100%
+
+14. CRIAÇÃO AUTOMÁTICA DAS "PASTAS"
+Depois do diagnóstico, o aplicativo deverá criar automaticamente uma estrutura de pastas/caixinhas financeiras.
+Exemplo:
+
+🛡️ SEGURANÇA
+Reserva de emergência
+Meta: €9.000
+
+Saldo atual: €3.000
+
+Contribuição mensal: €300
+
+Progresso: 33%
+
+🏠 GASTOS FIXOS
+Orçamento mensal: €1.500
+Subcategorias:
+
+Aluguel
+Supermercado
+Gasolina
+Internet
+Spotify
+Pet
+Salão
+etc.
+🌱 INVESTIMENTO PESSOAL
+Orçamento mensal: €300
+Objetivos:
+
+Curso
+Academia
+Livros
+Hobbies
+Beleza
+Educação
+✈️ VIAGEM — PARIS
+Meta: €2.400
+Saldo: €600
+
+Falta: €1.800
+
+Prazo: 9 meses
+
+Guardar mensalmente: €200
+
+Progresso: 25%
+
+🏡 CASA PRÓPRIA
+Meta de entrada: €30.000
+Saldo atual: €8.000
+
+Falta: €22.000
+
+Contribuição mensal: €450
+
+15. CHECKLIST MENSAL
+Criar automaticamente um checklist para cada mês.
+Exemplo:
+
+AGOSTO
+☐ Separar dinheiro da reserva
+☐ Pagar gastos fixos
+
+☐ Separar dinheiro para investimento pessoal
+
+☐ Transferir dinheiro para viagem
+
+☐ Transferir dinheiro para casa própria
+
+☐ Atualizar saldo dos objetivos
+
+☐ Conferir gastos do mês
+
+☐ Conferir se ultrapassou algum orçamento
+
+☐ Revisar prioridades
+
+16. DASHBOARD
+Depois do formulário, criar um dashboard financeiro.
+Mostrar:
+
+Renda
+€3.000
+Distribuição
+Segurança — 15%
+Gastos fixos — 50%
+
+Investimento pessoal — 10%
+
+Viagens — 10%
+
+Casa própria — 15%
+
+Total comprometido
+100%
+Principal prioridade
+Casa própria
+Próximo objetivo
+Reserva de emergência
+Valor que precisa guardar este mês
+€450
+Progresso das metas
+Reserva:
+██████░░░░ 60%
+
+Viagem:
+
+████░░░░░░ 40%
+
+Casa própria:
+
+███░░░░░░░ 30%
+
+17. ALERTAS INTELIGENTES
+O sistema deverá identificar situações importantes.
+Exemplos:
+
+Gastos fixos muito altos
+"Seus gastos fixos representam 72% da sua renda. Isso está reduzindo sua capacidade de construir reservas e alcançar seus objetivos."
+Reserva insuficiente
+"Você ainda não possui uma reserva suficiente para cobrir seus gastos essenciais."
+Meta incompatível
+"Para alcançar sua meta de €20.000 em 12 meses, seria necessário guardar €1.667/mês. Isso representa 55% da sua renda atual."
+Boa evolução
+"Você já atingiu 70% da sua meta de reserva de emergência."
+18. SISTEMA DE METAS
+Cada objetivo deverá ter:
+Nome
+Categoria
+Valor da meta
+Valor atual
+Valor restante
+Data limite
+Número de meses restantes
+Valor mensal recomendado
+Prioridade
+Status
+Progresso percentual
+Fórmulas:
+Valor restante:
+
+meta - valor atual
+
+Contribuição mensal necessária:
+
+valor restante ÷ meses restantes
+
+Progresso:
+
+valor atual ÷ valor da meta × 100
+
+19. EXPERIÊNCIA DO USUÁRIO
+O formulário deve ser simples, visual e amigável.
+Não mostrar todas as perguntas de uma vez.
+
+Usar um fluxo de etapas:
+
+1. Sua renda
+
+↓
+
+2. Seus gastos
+
+↓
+
+3. Suas dívidas
+
+↓
+
+4. Sua segurança financeira
+
+↓
+
+5. Seus sonhos
+
+↓
+
+6. Suas prioridades
+
+↓
+
+7. Seus objetivos
+
+↓
+
+8. Seu plano financeiro
+
+No final, apresentar uma tela de resultado muito visual.
+
+20. PRINCÍPIO FUNDAMENTAL
+O sistema não deve fazer o usuário sentir que está sendo "punido" por gastar dinheiro.
+A proposta deve ser:
+
+"Dar uma função para cada dinheiro que entra."
+
+O objetivo não é simplesmente fazer a pessoa gastar menos.
+
+O objetivo é ajudá-la a decidir:
+
+Quanto precisa para viver
+Quanto precisa proteger
+Quanto pode investir
+Quanto pode gastar consigo
+Quanto precisa guardar para viajar
+Quanto precisa guardar para comprar uma casa
+Quanto precisa guardar para seus sonhos
+O sistema deverá transformar uma renda mensal em um plano financeiro personalizado e acionável.
+21. RESULTADO FINAL ESPERADO
+Ao terminar o formulário, o usuário deverá receber:
+SEU PLANO FINANCEIRO
+Renda mensal: €3.000
+Gastos fixos: €1.500 — 50%
+
+Segurança/Futuro: €450 — 15%
+
+Investimento pessoal: €300 — 10%
+
+Viagens: €300 — 10%
+
+Casa própria: €450 — 15%
+
+SUAS PRIORIDADES
+🥇 Casa própria
+🥈 Reserva de emergência
+
+🥉 Viagem
+
+SUAS CAIXINHAS
+🛡️ Reserva de emergência — €450/mês
+✈️ Viagem — €300/mês
+
+🏡 Casa própria — €450/mês
+
+🌱 Investimento pessoal — €300/mês
+
+SEU CHECKLIST DO MÊS
+☐ Separar €450 para segurança
+☐ Separar €300 para investimento pessoal
+
+☐ Separar €300 para viagem
+
+☐ Separar €450 para casa própria
+
+☐ Pagar gastos fixos
+
+☐ Atualizar progresso das metas
+
+☐ Revisar gastos
+
+OBJETIVO DO DESENVOLVIMENTO
+Transformar toda essa lógica em uma funcionalidade completa dentro do aplicativo, incluindo:
+Interface do formulário
+Perguntas condicionais
+Banco de dados para armazenar respostas
+Cálculo de renda
+Cálculo de gastos
+Sistema de pontuação de prioridades
+Algoritmo de distribuição percentual
+Criação automática de pastas/caixinhas
+Sistema de metas
+Checklist mensal
+Dashboard
+Barras de progresso
+Alertas
+Recomendações personalizadas
+Possibilidade de editar as metas e percentuais manualmente
+A arquitetura deve permitir que as regras de cálculo sejam alteradas futuramente sem precisar reconstruir todo o sistema.
+O sistema também deverá explicar de forma simples por que determinada porcentagem foi recomendada, evitando apresentar os números como uma verdade absoluta.
+
+O resultado final deve ser uma experiência simples:
+
+RESPONDER → ENTENDER → DISTRIBUIR → CRIAR CAIXINHAS → GUARDAR → ACOMPANHAR → ALCANÇAR OBJETIVOS.
