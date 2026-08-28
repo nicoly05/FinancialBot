@@ -60,6 +60,8 @@ class User(UserMixin, db.Model):
     security_answer = db.Column(db.LargeBinary, nullable=False)
     categories_configured = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    email = db.Column(db.String(120), nullable=True)
+    profile_photo = db.Column(db.String(255), nullable=True)  # URL da foto de perfil
 
 
 class Session(db.Model):
@@ -470,6 +472,24 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        profile_photo = request.form.get('profile_photo')
+
+        current_user.email = email
+        if profile_photo:
+            current_user.profile_photo = profile_photo
+
+        db.session.commit()
+        flash('Perfil atualizado com sucesso!', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('profile.html', user=current_user)
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -504,6 +524,12 @@ def dashboard():
     # Contas obrigatórias
     mandatory_bills = MandatoryBill.query.filter_by(user_id=current_user.id).all()
 
+    # Calcular contas pendentes
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    pending_bills_count = sum(1 for bill in mandatory_bills
+                             if not (bill.last_paid_month == current_month and bill.last_paid_year == current_year))
+
     return render_template(
         'dashboard.html',
         categories=user_categories,
@@ -522,6 +548,7 @@ def dashboard():
         } for cat in user_categories],
         budgets=budgets,
         mandatory_bills=mandatory_bills,
+        pending_bills_count=pending_bills_count,
     )
 
 
@@ -881,7 +908,7 @@ def inject_now():
     return {'now': datetime.now}
     
 NO_CATEGORIES_MESSAGE = (
-    "✨ Bem-vindo(a) ao teu bot de finanças! ✨\n\n"
+    "✨ Bem-vindo(a), {username}! ✨\n\n"
     "Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:\n\n"
     "1️⃣ Vai ao Dashboard\n"
     "2️⃣ Na secção \"Categorias\", clica em \"Editar\"\n"
@@ -906,7 +933,9 @@ CHAT_HELP_MESSAGE = (
 def process_chat_message(message, user_id):
     user_categories = _get_user_categories(user_id)
     if not user_categories:
-        return NO_CATEGORIES_MESSAGE
+        user = User.query.get(user_id)
+        username = user.username if user else "utilizador"
+        return NO_CATEGORIES_MESSAGE.format(username=username)
     return handle_value_modification(message, user_id)
 
 
