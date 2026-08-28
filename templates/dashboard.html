@@ -32,34 +32,38 @@
         cursor: pointer;
         position: relative;
         transition: all 0.3s ease;
+        display: inline-block;
+        white-space: nowrap;
+        overflow: hidden;
+        vertical-align: middle;
     }
 
     .category-badge:hover {
-        transform: scale(1.05);
+        padding-right: 20px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
 
     .category-amount {
         opacity: 0;
-        position: absolute;
-        top: -8px;
-        right: -8px;
-        background: white;
-        padding: 6px 10px;
-        border-radius: 15px;
-        font-size: 0.8rem;
+        margin-left: 8px;
         font-weight: 700;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        white-space: nowrap;
-        z-index: 10;
+        font-size: 0.9rem;
         transition: all 0.3s ease;
-        pointer-events: none;
+        white-space: nowrap;
+        display: inline-block;
     }
 
     .category-badge:hover .category-amount {
         opacity: 1;
-        top: -12px;
-        right: -12px;
+    }
+
+    .category-icon-container {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 </style>
 {% endblock %}
@@ -90,7 +94,7 @@
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card stat-card p-4" style="cursor: pointer;" onclick="document.querySelector('.card:has(.bi-receipt)').scrollIntoView({behavior: 'smooth'})">
+        <div class="card stat-card p-4" style="cursor: pointer;" onclick="document.querySelector('#mandatory-bills-section').scrollIntoView({behavior: 'smooth'})">
             <div class="stat-label">Contas Pendentes</div>
             <div class="stat-value">{{ pending_bills_count }}</div>
             <small class="text-muted">Para pagar este mês</small>
@@ -121,7 +125,7 @@
                           data-category-net="{{ cat_net }}"
                           data-color="{{ category.color }}"
                           onclick="showCategoryBreakdown(this)"
-                          style="background-color: {{ category.color }}20; border: 2px solid {{ category.color }};">
+                          class="category-badge-item">
                         {{ category.emoji }} {{ category.name }}
                         <span class="category-amount">
                             <strong>€{{ "%.2f"|format(cat_net) }}</strong>
@@ -294,7 +298,7 @@
                     <div class="mb-2">
                         <span class="badge bg-primary fs-6 px-4 py-2">Saldo Total</span>
                     </div>
-                    <h2 class="display-4 fw-bold" style="background: var(--gradient-main); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    <h2 class="display-4 fw-bold" style="background: var(--gradient-main); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
                         €{{ "%.2f"|format(total_income - total_spent) }}
                     </h2>
                     <p class="text-muted">Ganhos - Gastos</p>
@@ -303,22 +307,22 @@
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <div class="card p-4 text-center border-0" style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);">
-                            <div class="mb-2">
-                                <i class="bi bi-arrow-up-circle-fill text-success fs-4"></i>
-                            </div>
-                            <h5 class="text-success fw-bold">Ganhos</h5>
-                            <h3 class="text-success fw-bold">€{{ "%.2f"|format(total_income) }}</h3>
+                        <div class="mb-2">
+                            <i class="bi bi-arrow-up-circle-fill text-success fs-4"></i>
                         </div>
+                        <h5 class="text-success fw-bold">Ganhos</h5>
+                        <h3 class="text-success fw-bold">€{{ "%.2f"|format(total_income) }}</h3>
                     </div>
+                </div>
                     <div class="col-md-6">
                         <div class="card p-4 text-center border-0" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">
-                            <div class="mb-2">
-                                <i class="bi bi-arrow-down-circle-fill text-danger fs-4"></i>
-                            </div>
-                            <h5 class="text-danger fw-bold">Gastos</h5>
-                            <h3 class="text-danger fw-bold">€{{ "%.2f"|format(total_spent) }}</h3>
+                        <div class="mb-2">
+                            <i class="bi bi-arrow-down-circle-fill text-danger fs-4"></i>
                         </div>
+                        <h5 class="text-danger fw-bold">Gastos</h5>
+                        <h3 class="text-danger fw-bold">€{{ "%.2f"|format(total_spent) }}</h3>
                     </div>
+                </div>
                 </div>
 
                 <hr class="my-4">
@@ -332,7 +336,7 @@
                         {% set cat_net = cat_data.get('net', 0) %}
                         <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3 border-bottom">
                             <div class="d-flex align-items-center">
-                                <div class="me-3" style="width: 40px; height: 40px; border-radius: 50%; background: {{ category.color }}20; display: flex; align-items: center; justify-content: center;">
+                                <div class="me-3 category-icon-container" data-category-color="{{ category.color }}">
                                     <span style="font-size: 1.2rem;">{{ category.emoji }}</span>
                                 </div>
                                 <div>
@@ -353,7 +357,7 @@
 </div>
 
 <!-- Mandatory Bills Section -->
-<div class="row mb-4" id="mandatory-bills-section">
+<div class="row mb-4">
     <div class="col-12">
         <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center">
@@ -450,27 +454,8 @@
         <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0"><i class="bi bi-clock-history"></i> Histórico de Transações</h5>
-            </div>
-
-            <!-- Filters -->
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <select class="form-select" id="filterType">
-                        <option value="all">Todos os tipos</option>
-                        <option value="income">Apenas Ganhos</option>
-                        <option value="expense">Apenas Gastos</option>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <select class="form-select" id="filterCategory">
-                        <option value="all">Todas as categorias</option>
-                        {% for category in categories %}
-                            <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <input type="text" class="form-control" id="filterSearch" placeholder="Pesquisar...">
+                <div class="d-flex gap-2">
+                    <input type="text" class="form-control" id="globalSearch" placeholder="Pesquisar..." style="width: 200px;" onkeyup="globalFilter(this.value)">
                 </div>
             </div>
 
@@ -479,16 +464,51 @@
                 <table class="table table-hover" id="transactionsTable">
                     <thead>
                         <tr>
-                            <th>Data</th>
-                            <th>Tipo</th>
+                            <th class="rounded-start">
+                                Data
+                                <button class="btn btn-sm btn-light ms-2" onclick="toggleFilter('date')">
+                                    <i class="bi bi-funnel"></i>
+                                </button>
+                            </th>
+                            <th>
+                                Tipo
+                                <button class="btn btn-sm btn-light ms-2" onclick="toggleFilter('type')">
+                                    <i class="bi bi-funnel"></i>
+                                </button>
+                            </th>
                             <th>Quantia</th>
-                            <th>Categoria</th>
-                            <th>Subcategoria</th>
+                            <th>
+                                Categoria
+                                <button class="btn btn-sm btn-light ms-2" onclick="toggleFilter('category')">
+                                    <i class="bi bi-funnel"></i>
+                                </button>
+                            </th>
+                            <th class="rounded-end">Subcategoria</th>
+                        </tr>
+                        <tr id="filterRow" style="display: none;">
+                            <td><input type="text" class="form-control form-control-sm" placeholder="Filtrar data..." onkeyup="filterByColumn('date', this.value)"></td>
+                            <td>
+                                <select class="form-select form-select-sm" onchange="filterByColumn('type', this.value)">
+                                    <option value="">Todos</option>
+                                    <option value="income">Ganhos</option>
+                                    <option value="expense">Gastos</option>
+                                </select>
+                            </td>
+                            <td></td>
+                            <td>
+                                <select class="form-select form-select-sm" onchange="filterByColumn('category', this.value)">
+                                    <option value="">Todas</option>
+                                    {% for category in categories %}
+                                        <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td></td>
                         </tr>
                     </thead>
                     <tbody>
                         {% for tx in transactions|sort(attribute='timestamp', reverse=true) %}
-                        <tr data-type="{{ tx.type }}" data-category="{{ tx.category_id }}" data-search="{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }} {{ tx.amount }}">
+                        <tr data-type="{{ tx.type }}" data-category="{{ tx.category_id }}">
                             <td>{{ tx.timestamp.strftime('%d/%m/%Y %H:%M') }}</td>
                             <td>
                                 {% if tx.type == 'income' %}
@@ -580,9 +600,15 @@
     // Aplica as cores das categorias (badges) a partir de data-color
     document.querySelectorAll('.category-badge[data-color]').forEach(el => {
         const color = el.dataset.color;
-        el.style.backgroundColor = color + '20';
+        el.style.backgroundColor = color;
         el.style.border = `2px solid ${color}`;
-        el.style.color = '#333';
+        el.style.color = '#fff';
+    });
+
+    // Aplica cores aos ícones de categoria no modal
+    document.querySelectorAll('.category-icon-container[data-category-color]').forEach(el => {
+        const color = el.dataset.categoryColor;
+        el.style.backgroundColor = color;
     });
 
     // Mostra valores das categorias no hover
@@ -591,8 +617,6 @@
             const amount = this.querySelector('.category-amount');
             if (amount) {
                 amount.style.opacity = '1';
-                amount.style.top = '-12px';
-                amount.style.right = '-12px';
             }
         });
 
@@ -600,8 +624,6 @@
             const amount = this.querySelector('.category-amount');
             if (amount) {
                 amount.style.opacity = '0';
-                amount.style.top = '-8px';
-                amount.style.right = '-8px';
             }
         });
     });
@@ -721,10 +743,7 @@
     }
 
     // Inicializa com o gráfico de pizza (visão geral)
-    const pieBtn = document.querySelector('.chart-btn[data-chart-type="pie"]');
-    if (pieBtn) {
-        showChart('pie', pieBtn);
-    }
+    showChart('pie', document.querySelector('.chart-btn[data-chart-type="pie"]'));
 
     // Auto-refresh do dashboard a cada 30 segundos
     setInterval(() => {
@@ -1132,15 +1151,6 @@
         });
     });
 
-    // Verifica se os elementos de filtro existem antes de adicionar event listeners
-    const filterType = document.getElementById('filterType');
-    const filterCategory = document.getElementById('filterCategory');
-    const filterSearch = document.getElementById('filterSearch');
-
-    if (filterType) filterType.addEventListener('change', filterTransactions);
-    if (filterCategory) filterCategory.addEventListener('change', filterTransactions);
-    if (filterSearch) filterSearch.addEventListener('keyup', filterTransactions);
-
     // Mandatory Bill Form
     document.getElementById('mandatoryBillForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -1174,35 +1184,74 @@
     });
 
     // Transaction Filtering
-    function filterTransactions() {
-        const typeFilter = document.getElementById('filterType')?.value || 'all';
-        const categoryFilter = document.getElementById('filterCategory')?.value || 'all';
-        const searchFilter = document.getElementById('filterSearch')?.value.toLowerCase() || '';
+    let currentFilters = {
+        date: '',
+        type: '',
+        category: '',
+        global: ''
+    };
 
-        const rows = document.querySelectorAll('#transactionsTable tbody tr');
+    function toggleFilter(column) {
+        const filterRow = document.getElementById('filterRow');
+        filterRow.style.display = filterRow.style.display === 'none' ? '' : 'none';
+    }
+
+    function filterByColumn(column, value) {
+        currentFilters[column] = value.toLowerCase();
+        applyFilters();
+    }
+
+    function globalFilter(value) {
+        currentFilters.global = value.toLowerCase();
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const rows = document.querySelectorAll('#transactionsTable tbody tr:not(#filterRow):not(#noResults)');
 
         rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            const dateText = cells[0].textContent.toLowerCase();
             const type = row.getAttribute('data-type');
             const category = row.getAttribute('data-category');
-            const searchContent = row.getAttribute('data-search')?.toLowerCase() || '';
+            const rowText = row.textContent.toLowerCase();
 
             let showRow = true;
 
-            if (typeFilter !== 'all' && type !== typeFilter) {
+            if (currentFilters.date && !dateText.includes(currentFilters.date)) {
                 showRow = false;
             }
 
-            if (categoryFilter !== 'all' && category !== categoryFilter) {
+            if (currentFilters.type && type !== currentFilters.type) {
                 showRow = false;
             }
 
-            if (searchFilter && !searchContent.includes(searchFilter)) {
+            if (currentFilters.category && category !== currentFilters.category) {
+                showRow = false;
+            }
+
+            if (currentFilters.global && !rowText.includes(currentFilters.global)) {
                 showRow = false;
             }
 
             row.style.display = showRow ? '' : 'none';
         });
+
+        // Mostrar mensagem se não houver resultados
+        const visibleRows = Array.from(rows).filter(row => row.style.display !== 'none');
+        const noResults = document.getElementById('noResults');
+        if (noResults) {
+            noResults.remove();
+        }
+
+        if (visibleRows.length === 0) {
+            const tbody = document.querySelector('#transactionsTable tbody');
+            const tr = document.createElement('tr');
+            tr.id = 'noResults';
+            tr.innerHTML = '<td colspan="5" class="text-center text-muted py-4">Nenhuma transação encontrada com os filtros selecionados.</td>';
+            tbody.appendChild(tr);
+        }
     }
-    window.filterTransactions = filterTransactions;
+})();
 </script>
 {% endblock %}
