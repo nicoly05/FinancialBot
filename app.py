@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, upgrade
@@ -7,11 +7,14 @@ import json
 import os
 import re
 from datetime import datetime, timedelta
-from config import Config 
+from config import Config
 import requests
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
 # SQLAlchemy / Migrations setup
 db = SQLAlchemy(app)
@@ -168,6 +171,19 @@ class MandatoryBill(db.Model):
     last_paid_month = db.Column(db.Integer)  # Mês em que foi pago pela última vez
     last_paid_year = db.Column(db.Integer)  # Ano em que foi pago pela última vez
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class WishListItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    total_value = db.Column(db.Float, nullable=False)
+    saved_amount = db.Column(db.Float, default=0.0)
+    link = db.Column(db.String(500), nullable=True)
+    image_url = db.Column(db.String(500), nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    achieved = db.Column(db.Boolean, default=False)
 
 
 @login_manager.user_loader
@@ -490,6 +506,60 @@ def profile():
     return render_template('profile.html', user=current_user)
 
 
+@app.route('/wishlist', methods=['GET', 'POST'])
+@login_required
+def wishlist():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        total_value = request.form.get('total_value')
+        link = request.form.get('link')
+        image_url = request.form.get('image_url')
+        category_id = request.form.get('category_id')
+
+        # Handle file upload
+        image_file = request.files.get('image_file')
+        if image_file and image_file.filename:
+            filename = secure_filename(image_file.filename)
+            # Add timestamp to avoid conflicts
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{timestamp}_{filename}"
+            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            image_url = f"/uploads/{filename}"
+
+        if name and total_value:
+            wishlist_item = WishListItem(
+                user_id=current_user.id,
+                name=name,
+                total_value=float(total_value),
+                link=link,
+                image_url=image_url,
+                category_id=int(category_id) if category_id else None
+            )
+            db.session.add(wishlist_item)
+            db.session.commit()
+            flash('Item adicionado à Wish List!', 'success')
+            return redirect(url_for('wishlist'))
+
+    wishlist_items = WishListItem.query.filter_by(user_id=current_user.id).all()
+    user_categories = _get_user_categories(current_user.id)
+    transactions = Transaction.query.filter_by(user_id=current_user.id).all()
+
+    # Calcular category_totals para mostrar saldos no modal
+    category_totals = {}
+    for cat in user_categories:
+        cat_expense = sum(t.amount for t in transactions if t.category_id == cat.id and t.type == 'expense')
+        cat_income = sum(t.amount for t in transactions if t.category_id == cat.id and t.type == 'income')
+        category_totals[cat.id] = {'expense': cat_expense, 'income': cat_income, 'net': cat_income - cat_expense}
+
+    return render_template('wishlist.html', wishlist_items=wishlist_items, categories=user_categories, category_totals=category_totals)
+
+
+@app.route('/uploads/<filename>')
+@login_required
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -530,6 +600,10 @@ def dashboard():
     pending_bills_count = sum(1 for bill in mandatory_bills
                              if not (bill.last_paid_month == current_month and bill.last_paid_year == current_year))
 
+    # Wish List items
+    wishlist_items = WishListItem.query.filter_by(user_id=current_user.id).all()
+    wishlist_count = len(wishlist_items)
+
     return render_template(
         'dashboard.html',
         categories=user_categories,
@@ -549,6 +623,7 @@ def dashboard():
         budgets=budgets,
         mandatory_bills=mandatory_bills,
         pending_bills_count=pending_bills_count,
+        wishlist_count=wishlist_count,
     )
 
 
@@ -903,6 +978,156 @@ def api_update_bill_payment():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+# Wish List API Routes
+@app.route('/api/wishlist/<int:item_id>', methods=['DELETE'])
+@login_required
+def api_delete_wishlist_item(item_id):
+    item = WishListItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+    if not item:
+        return jsonify({'success': False, 'error': 'Item não encontrado'}), 404
+
+    try:
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/wishlist/<int:item_id>/add-funds', methods=['POST'])
+@login_required
+def api_add_wishlist_funds(item_id):
+    data = request.get_json() or {}
+    amount = data.get('amount')
+    category_id = data.get('category_id')
+
+    if not all([amount, category_id]):
+        return jsonify({'success': False, 'error': 'Dados incompletos'}), 400
+
+    item = WishListItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+    if not item:
+        return jsonify({'success': False, 'error': 'Item não encontrado'}), 404
+
+    category = Category.query.filter_by(id=category_id, user_id=current_user.id).first()
+    if not category:
+        return jsonify({'success': False, 'error': 'Categoria não encontrada'}), 404
+
+    try:
+        # Verificar se a categoria tem saldo suficiente
+        category_transactions = Transaction.query.filter_by(
+            user_id=current_user.id,
+            category_id=category_id
+        ).all()
+
+        cat_income = sum(t.amount for t in category_transactions if t.type == 'income')
+        cat_expense = sum(t.amount for t in category_transactions if t.type == 'expense')
+        category_balance = cat_income - cat_expense
+
+        if category_balance < amount:
+            return jsonify({'success': False, 'error': f'A categoria {category.name} não tem saldo suficiente. Saldo atual: €{category_balance:.2f}'}), 400
+
+        # Remover dinheiro da categoria
+        transaction = Transaction(
+            user_id=current_user.id,
+            category_id=category_id,
+            amount=amount,
+            type='expense',
+            subcategory_name='Wish List'
+        )
+        db.session.add(transaction)
+
+        # Adicionar à Wish List
+        item.saved_amount += amount
+
+        # Verificar se foi conquistado
+        if item.saved_amount >= item.total_value:
+            item.achieved = True
+
+        db.session.commit()
+        return jsonify({'success': True, 'new_saved_amount': item.saved_amount, 'achieved': item.achieved})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/wishlist/<int:item_id>/return-funds', methods=['POST'])
+@login_required
+def api_return_wishlist_funds(item_id):
+    data = request.get_json() or {}
+    category_id = data.get('category_id')
+
+    if not category_id:
+        return jsonify({'success': False, 'error': 'Categoria não especificada'}), 400
+
+    item = WishListItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+    if not item:
+        return jsonify({'success': False, 'error': 'Item não encontrado'}), 404
+
+    category = Category.query.filter_by(id=category_id, user_id=current_user.id).first()
+    if not category:
+        return jsonify({'success': False, 'error': 'Categoria não encontrada'}), 404
+
+    try:
+        # Devolver dinheiro para a categoria
+        if item.saved_amount > 0:
+            transaction = Transaction(
+                user_id=current_user.id,
+                category_id=category_id,
+                amount=item.saved_amount,
+                type='income',
+                subcategory_name='Devolução Wish List'
+            )
+            db.session.add(transaction)
+
+        # Remover o item
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/wishlist/<int:item_id>', methods=['PUT'])
+@login_required
+def api_update_wishlist_item(item_id):
+    data = request.get_json() or {}
+    name = data.get('name')
+    total_value = data.get('total_value')
+    link = data.get('link')
+    image_url = data.get('image_url')
+    category_id = data.get('category_id')
+
+    item = WishListItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+    if not item:
+        return jsonify({'success': False, 'error': 'Item não encontrado'}), 404
+
+    try:
+        if name:
+            item.name = name
+        if total_value:
+            item.total_value = float(total_value)
+        if link is not None:
+            item.link = link
+        if image_url is not None:
+            item.image_url = image_url
+        if category_id is not None:
+            item.category_id = int(category_id) if category_id else None
+
+        # Recalcular achieved status
+        if item.saved_amount >= item.total_value:
+            item.achieved = True
+        else:
+            item.achieved = False
+
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.context_processor
 def inject_now():
     return {'now': datetime.now}
@@ -1046,4 +1271,4 @@ def handle_value_modification(message, user_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5002)
+    app.run(debug=True, port=5003)
