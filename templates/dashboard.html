@@ -36,21 +36,32 @@
         white-space: nowrap;
         overflow: hidden;
         vertical-align: middle;
+        padding: 8px 16px;
+        border-radius: 25px;
+        min-width: fit-content;
     }
 
     .category-badge:hover {
-        padding-right: 20px;
+        padding-right: 80px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .category-content {
+        display: inline-block;
+        white-space: nowrap;
+        margin-right: 10px;
     }
 
     .category-amount {
         opacity: 0;
-        margin-left: 8px;
+        position: absolute;
+        right: 16px;
+        top: 50%;
+        transform: translateY(-50%);
         font-weight: 700;
         font-size: 0.9rem;
         transition: all 0.3s ease;
         white-space: nowrap;
-        display: inline-block;
     }
 
     .category-badge:hover .category-amount {
@@ -78,27 +89,32 @@
 
 <!-- Stats Cards -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stat-card p-4" style="cursor: pointer;" onclick="showTotalBreakdown()">
             <div class="stat-label">Total (Ganhos - Gastos)</div>
             <div class="stat-value">€{{ "%.2f"|format(total_income - total_spent) }}</div>
-            <small class="text-muted">Ganhos: €{{ "%.2f"|format(total_income) }} | Gastos: €{{ "%.2f"|format(total_spent) }}</small>
             <i class="bi bi-cash-stack position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stat-card p-4">
             <div class="stat-label">Categorias</div>
             <div class="stat-value">{{ categories|length }}</div>
             <i class="bi bi-tags position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stat-card p-4" style="cursor: pointer;" onclick="document.querySelector('#mandatory-bills-section').scrollIntoView({behavior: 'smooth'})">
             <div class="stat-label">Contas Pendentes</div>
             <div class="stat-value">{{ pending_bills_count }}</div>
-            <small class="text-muted">Para pagar este mês</small>
             <i class="bi bi-receipt position-absolute top-0 end-0 m-3 text-muted"></i>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card p-4" style="cursor: pointer;" onclick="goToWishlist()">
+            <div class="stat-label">Wish List</div>
+            <div class="stat-value">{{ wishlist_count }}</div>
+            <i class="bi bi-heart position-absolute top-0 end-0 m-3 text-muted"></i>
         </div>
     </div>
 </div>
@@ -113,7 +129,7 @@
                     <i class="bi bi-pencil"></i> Editar
                 </button>
             </div>
-            <p class="text-muted small mb-2 mt-2">Clica numa categoria para ver a divisão por subcategoria no gráfico acima.</p>
+            <p class="text-muted small mb-2 mt-2">Clica numa categoria para ver a divisão por subcategoria no gráfico abaixo.</p>
             <div class="mt-1">
                 {% for category in categories %}
                     {% set subcats = category.subcategories|from_json %}
@@ -126,13 +142,15 @@
                           data-color="{{ category.color }}"
                           onclick="showCategoryBreakdown(this)"
                           class="category-badge-item">
-                        {{ category.emoji }} {{ category.name }}
+                        <span class="category-content">
+                            {{ category.emoji }} {{ category.name }}
+                            {% if subcats %}
+                                <small>({{ subcats|length }} subcategorias)</small>
+                            {% endif %}
+                        </span>
                         <span class="category-amount">
                             <strong>€{{ "%.2f"|format(cat_net) }}</strong>
                         </span>
-                        {% if subcats %}
-                            <small>({{ subcats|length }} subcategorias)</small>
-                        {% endif %}
                     </span>
                 {% endfor %}
                 {% if not categories %}
@@ -496,7 +514,7 @@
                             </td>
                             <td></td>
                             <td>
-                                <select class="form-select form-select-sm" onchange="filterByColumn('category', this.value)">
+                                <select class="form-select form-select-sm" id="categoryFilter" onchange="filterByColumn('category', this.value)">
                                     <option value="">Todas</option>
                                     {% for category in categories %}
                                         <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
@@ -569,6 +587,10 @@
 
 {% block extra_js %}
 <script>
+function goToWishlist() {
+    window.location.href = '/wishlist';
+}
+
 (function () {
     // Lê os dados injetados pelo servidor a partir das tags JSON acima.
     // Nenhuma expressão Jinja aparece dentro deste bloco <script> normal.
@@ -1197,7 +1219,7 @@
     }
 
     function filterByColumn(column, value) {
-        currentFilters[column] = value.toLowerCase();
+        currentFilters[column] = value;
         applyFilters();
     }
 
@@ -1218,7 +1240,7 @@
 
             let showRow = true;
 
-            if (currentFilters.date && !dateText.includes(currentFilters.date)) {
+            if (currentFilters.date && !dateText.includes(currentFilters.date.toLowerCase())) {
                 showRow = false;
             }
 

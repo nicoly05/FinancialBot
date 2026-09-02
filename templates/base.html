@@ -56,7 +56,8 @@
             transform: translateX(-50%);
         }
 
-        .nav-link:hover::after {
+        .nav-link:hover::after,
+        .nav-link.active::after {
             width: 80%;
         }
 
@@ -283,24 +284,24 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('dashboard') }}">
+                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                             <i class="bi bi-graph-up"></i> Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('chat') }}">
+                        <a class="nav-link {% if request.endpoint == 'chat' %}active{% endif %}" href="{{ url_for('chat') }}">
                             <i class="bi bi-chat-dots"></i> Chat
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('profile') }}">
-                            <i class="bi bi-person"></i> Perfil
+                        <a class="nav-link {% if request.endpoint == 'wishlist' %}active{% endif %}" href="{{ url_for('wishlist') }}">
+                            <i class="bi bi-heart"></i> Wish List
                         </a>
                     </li>
                     <li class="nav-item">
-                        <span class="nav-link text-white">
+                        <a class="nav-link text-white {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">
                             <i class="bi bi-person-circle"></i> {{ current_user.username }}
-                        </span>
+                        </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">

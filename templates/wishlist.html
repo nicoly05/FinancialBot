@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+
+{% block title %}Wish List - FinancialBot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wishlist-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .wishlist-card {
+        border-radius: 20px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .wishlist-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(139, 92, 246, 0.2);
+    }
+
+    .wishlist-image {
+        height: 200px;
+        object-fit: cover;
+        width: 100%;
+        background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .wishlist-image-placeholder {
+        font-size: 3rem;
+        color: #9ca3af;
+    }
+
+    .progress-container {
+        height: 8px;
+        background: #f3f4f6;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 12px 0;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .add-funds-btn {
+        background: linear-gradient(135deg, #10b981, #059669);
+        border: none;
+        border-radius: 12px;
+        padding: 8px 16px;
+        color: white;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .add-funds-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    .achieved-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+
+    .delete-btn {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(239, 68, 68, 0.9);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .delete-btn:hover {
+        background: rgba(220, 38, 38, 1);
+        transform: scale(1.1);
+    }
+
+    .edit-btn {
+        position: absolute;
+        top: 10px;
+        left: 50px;
+        background: rgba(59, 130, 246, 0.9);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .edit-btn:hover {
+        background: rgba(37, 99, 235, 1);
+        transform: scale(1.1);
+    }
+
+    .modal-content {
+        border-radius: 20px;
+        border: none;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6b7280;
+    }
+
+    .empty-state-icon {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wishlist-container">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2><i class="bi bi-heart"></i> Wish List</h2>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWishModal">
+                    <i class="bi bi-plus"></i> Adicionar Desejo
+                </button>
+            </div>
+            <p class="text-muted">Organize seus sonhos e acompanhe seu progresso financeiro</p>
+        </div>
+    </div>
+
+    {% if wishlist_items %}
+    <div class="row">
+        {% for item in wishlist_items %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card wishlist-card">
+                {% if item.achieved %}
+                <div class="achieved-badge">
+                    <i class="bi bi-check-circle"></i> Conquistado!
+                </div>
+                {% endif %}
+
+                <button class="delete-btn" onclick="deleteWishItem({{ item.id }}, {{ item.saved_amount }})">
+                    <i class="bi bi-trash"></i>
+                </button>
+
+                <button class="edit-btn" onclick="openEditModal({{ item.id }}, '{{ item.name }}', {{ item.total_value }}, '{{ item.link or '' }}', '{{ item.image_url or '' }}', {{ item.category_id or 'null' }})">
+                    <i class="bi bi-pencil"></i>
+                </button>
+
+                {% if item.image_url %}
+                <img src="{{ item.image_url }}" alt="{{ item.name }}" class="wishlist-image">
+                {% else %}
+                <div class="wishlist-image">
+                    <span class="wishlist-image-placeholder">
+                        <i class="bi bi-gift"></i>
+                    </span>
+                </div>
+                {% endif %}
+
+                <div class="card-body">
+                    <h5 class="card-title fw-bold">{{ item.name }}</h5>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">Progresso</span>
+                        <span class="fw-bold">{{ "%.1f"|format((item.saved_amount / item.total_value) * 100) }}%</span>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-bar" style="width: {{ (item.saved_amount / item.total_value) * 100 }}%"></div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <small class="text-muted d-block">Guardado</small>
+                            <span class="fw-bold text-success">€{{ "%.2f"|format(item.saved_amount) }}</span>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted d-block">Falta</small>
+                            <span class="fw-bold text-danger">€{{ "%.2f"|format(item.total_value - item.saved_amount) }}</span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary flex-1" onclick="openAddFundsModal({{ item.id }}, '{{ item.name }}', {{ item.total_value }}, {{ item.saved_amount }})">
+                            <i class="bi bi-plus-circle"></i> Guardar
+                        </button>
+                        {% if item.link %}
+                        <a href="{{ item.link }}" target="_blank" class="btn btn-outline-secondary flex-1">
+                            <i class="bi bi-link"></i> Link
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    {% if item.category_id %}
+                    {% set cat = categories|selectattr('id', 'equalto', item.category_id)|first %}
+                    {% if cat %}
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <i class="bi bi-tag"></i> {{ cat.emoji }} {{ cat.name }}
+                        </small>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">
+            <i class="bi bi-heart"></i>
+        </div>
+        <h3>Sua Wish List está vazia</h3>
+        <p>Comece a adicionar seus sonhos e objetivos financeiros!</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWishModal">
+            <i class="bi bi-plus"></i> Adicionar Primeiro Desejo
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Wish Modal -->
+<div class="modal fade" id="addWishModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Adicionar à Wish List</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addWishForm" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Produto</label>
+                        <input type="text" class="form-control" name="name" required placeholder="Ex: iPhone 15 Pro">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor Total (€)</label>
+                        <input type="number" step="0.01" class="form-control" name="total_value" required placeholder="0.00">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Link (opcional)</label>
+                        <input type="url" class="form-control" name="link" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL da Imagem (opcional)</label>
+                        <input type="url" class="form-control" name="image_url" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ou carregar imagem (opcional)</label>
+                        <input type="file" class="form-control" name="image_file" accept="image/*">
+                        <small class="text-muted">Formatos aceitos: JPG, PNG, GIF (máx. 16MB)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria (opcional)</label>
+                        <select class="form-select" name="category_id">
+                            <option value="">Sem categoria</option>
+                            {% for category in categories %}
+                                <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus"></i> Adicionar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Funds Modal -->
+<div class="modal fade" id="addFundsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Guardar Dinheiro</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <p class="text-muted">Adicionando dinheiro para: <strong id="wishItemName"></strong></p>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Falta para conquistar:</span>
+                        <span class="fw-bold text-danger" id="remainingAmount">€0.00</span>
+                    </div>
+                </div>
+                <form id="addFundsForm">
+                    <input type="hidden" id="wishItemId">
+                    <div class="mb-3">
+                        <label class="form-label">Valor a guardar (€)</label>
+                        <input type="number" step="0.01" class="form-control" id="fundAmount" required min="0.01">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria para remover dinheiro</label>
+                        <select class="form-select" id="fundCategory" required>
+                            <option value="">Selecione uma categoria</option>
+                            {% for category in categories %}
+                                {% set cat_data = category_totals.get(category.id, {}) %}
+                                {% set cat_net = cat_data.get('net', 0) %}
+                                <option value="{{ category.id }}" data-balance="{{ cat_net }}">
+                                    {{ category.emoji }} {{ category.name }} (€{{ "%.2f"|format(cat_net) }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-plus-circle"></i> Guardar Dinheiro
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Return Funds Modal -->
+<div class="modal fade" id="returnFundsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Devolver Dinheiro</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <p class="text-muted">Devolvendo €<span id="returnAmount">0.00</span> para uma categoria</p>
+                </div>
+                <form id="returnFundsForm">
+                    <input type="hidden" id="returnItemId">
+                    <div class="mb-3">
+                        <label class="form-label">Categoria para devolver dinheiro</label>
+                        <select class="form-select" id="returnCategory" required>
+                            <option value="">Selecione uma categoria</option>
+                            {% for category in categories %}
+                                {% set cat_data = category_totals.get(category.id, {}) %}
+                                {% set cat_net = cat_data.get('net', 0) %}
+                                <option value="{{ category.id }}">
+                                    {{ category.emoji }} {{ category.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-arrow-return-left"></i> Devolver e Remover
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Wish Modal -->
+<div class="modal fade" id="editWishModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Item da Wish List</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editWishForm">
+                    <input type="hidden" id="editItemId">
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Produto</label>
+                        <input type="text" class="form-control" id="editName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor Total (€)</label>
+                        <input type="number" step="0.01" class="form-control" id="editTotalValue" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Link (opcional)</label>
+                        <input type="url" class="form-control" id="editLink" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL da Imagem (opcional)</label>
+                        <input type="url" class="form-control" id="editImageUrl" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria (opcional)</label>
+                        <select class="form-select" id="editCategoryId">
+                            <option value="">Sem categoria</option>
+                            {% for category in categories %}
+                                <option value="{{ category.id }}">{{ category.emoji }} {{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-check"></i> Guardar Alterações
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function deleteWishItem(itemId, savedAmount) {
+    if (!confirm('Tem certeza que deseja remover este item da Wish List?')) return;
+
+    if (savedAmount > 0) {
+        const returnFunds = confirm('Este item tem €' + savedAmount.toFixed(2) + ' guardados. Deseja devolver este dinheiro para alguma categoria?');
+
+        if (returnFunds) {
+            openReturnFundsModal(itemId, savedAmount);
+            return;
+        }
+    }
+
+    fetch('/api/wishlist/' + itemId, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Erro ao remover item: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao comunicar com o servidor');
+    });
+}
+
+function openAddFundsModal(itemId, name, totalValue, savedAmount) {
+    document.getElementById('wishItemId').value = itemId;
+    document.getElementById('wishItemName').textContent = name;
+    document.getElementById('remainingAmount').textContent = '€' + (totalValue - savedAmount).toFixed(2);
+    document.getElementById('fundAmount').value = '';
+    document.getElementById('fundAmount').max = totalValue - savedAmount;
+
+    const modal = new bootstrap.Modal(document.getElementById('addFundsModal'));
+    modal.show();
+}
+
+function openReturnFundsModal(itemId, savedAmount) {
+    document.getElementById('returnItemId').value = itemId;
+    document.getElementById('returnAmount').textContent = savedAmount.toFixed(2);
+
+    const modal = new bootstrap.Modal(document.getElementById('returnFundsModal'));
+    modal.show();
+}
+
+function openEditModal(itemId, name, totalValue, link, imageUrl, categoryId) {
+    document.getElementById('editItemId').value = itemId;
+    document.getElementById('editName').value = name;
+    document.getElementById('editTotalValue').value = totalValue;
+    document.getElementById('editLink').value = link;
+    document.getElementById('editImageUrl').value = imageUrl;
+    document.getElementById('editCategoryId').value = categoryId || '';
+
+    const modal = new bootstrap.Modal(document.getElementById('editWishModal'));
+    modal.show();
+}
+
+document.getElementById('addFundsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const itemId = document.getElementById('wishItemId').value;
+    const amount = parseFloat(document.getElementById('fundAmount').value);
+    const categoryId = document.getElementById('fundCategory').value;
+
+    if (!categoryId) {
+        alert('Selecione uma categoria para remover o dinheiro');
+        return;
+    }
+
+    fetch('/api/wishlist/' + itemId + '/add-funds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            amount: amount,
+            category_id: parseInt(categoryId)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addFundsModal')).hide();
+            location.reload();
+        } else {
+            alert('Erro ao guardar dinheiro: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao comunicar com o servidor');
+    });
+});
+
+document.getElementById('returnFundsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const itemId = document.getElementById('returnItemId').value;
+    const categoryId = document.getElementById('returnCategory').value;
+
+    if (!categoryId) {
+        alert('Selecione uma categoria para devolver o dinheiro');
+        return;
+    }
+
+    fetch('/api/wishlist/' + itemId + '/return-funds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            category_id: parseInt(categoryId)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('returnFundsModal')).hide();
+            location.reload();
+        } else {
+            alert('Erro ao devolver dinheiro: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao comunicar com o servidor');
+    });
+});
+
+document.getElementById('editWishForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const itemId = document.getElementById('editItemId').value;
+    const name = document.getElementById('editName').value;
+    const totalValue = document.getElementById('editTotalValue').value;
+    const link = document.getElementById('editLink').value;
+    const imageUrl = document.getElementById('editImageUrl').value;
+    const categoryId = document.getElementById('editCategoryId').value;
+
+    fetch('/api/wishlist/' + itemId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: name,
+            total_value: parseFloat(totalValue),
+            link: link || null,
+            image_url: imageUrl || null,
+            category_id: categoryId ? parseInt(categoryId) : null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editWishModal')).hide();
+            location.reload();
+        } else {
+            alert('Erro ao atualizar item: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao comunicar com o servidor');
+    });
+});
+</script>
+{% endblock %}
