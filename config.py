@@ -3,6 +3,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Supabase Database
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://usuario:senha@host:porta/database')
+
+# Supabase Storage
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, 'instance')
 os.makedirs(INSTANCE_DIR, exist_ok=True)
@@ -16,3 +23,4 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = UPLOAD_FOLDER
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+
