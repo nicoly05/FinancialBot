@@ -31,35 +31,70 @@
             background: var(--gradient-main);
             box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
             backdrop-filter: blur(10px);
+            padding: 1rem 0;
         }
 
         .navbar-brand {
             font-weight: 700;
             font-size: 1.4rem;
             letter-spacing: -0.5px;
+            color: white !important;
+        }
+
+        .navbar-toggler {
+            border: none;
+            padding: 0.5rem;
+        }
+
+        .navbar-toggler:focus {
+            box-shadow: none;
         }
 
         .nav-link {
             font-weight: 500;
             transition: all 0.3s ease;
             position: relative;
+            color: rgba(255, 255, 255, 0.9) !important;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            margin: 0.25rem;
         }
 
-        .nav-link::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            width: 0;
-            height: 2px;
-            background: white;
-            transition: all 0.3s ease;
-            transform: translateX(-50%);
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: white !important;
         }
 
-        .nav-link:hover::after,
-        .nav-link.active::after {
-            width: 80%;
+        .nav-link.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: white !important;
+            font-weight: 600;
+        }
+
+        .nav-link i {
+            margin-right: 0.5rem;
+        }
+
+        .navbar-collapse {
+            justify-content: center;
+        }
+
+        .nav-center {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        @media (max-width: 991px) {
+            .nav-center {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .nav-link {
+                padding: 1rem;
+                border-radius: 8px;
+            }
         }
 
         .card {
@@ -283,7 +318,7 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav nav-center">
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
                             <i class="bi bi-graph-up"></i> Dashboard
@@ -300,7 +335,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link text-white {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">
+                        <a class="nav-link {% if request.endpoint == 'planning' %}active{% endif %}" href="{{ url_for('planning') }}">
+                            <i class="bi bi-calculator"></i> Planejamento
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">
                             <i class="bi bi-person-circle"></i> {{ current_user.username }}
                         </a>
                     </li>

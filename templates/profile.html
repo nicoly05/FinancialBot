@@ -57,15 +57,9 @@
                     <i class="bi bi-person"></i>
                 </div>
             {% endif %}
-            <div class="photo-upload-btn">
-                <button class="btn btn-outline-primary btn-sm" onclick="document.getElementById('photoInput').click()">
-                    <i class="bi bi-camera"></i> Alterar Foto
-                </button>
-                <input type="file" id="photoInput" accept="image/*" style="display: none;" onchange="handlePhotoUpload(this)">
-            </div>
         </div>
 
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
             <div class="mb-3">
                 <label class="form-label">Nome de Utilizador</label>
                 <input type="text" class="form-control" value="{{ user.username }}" disabled>
@@ -84,6 +78,12 @@
                 <small class="text-muted">Cole o URL da sua foto de perfil</small>
             </div>
 
+            <div class="mb-3">
+                <label class="form-label">Ou carregar foto de perfil</label>
+                <input type="file" class="form-control" name="image_file" accept="image/*">
+                <small class="text-muted">Formatos aceitos: JPG, PNG, GIF (máx. 16MB)</small>
+            </div>
+
             <button type="submit" class="btn btn-primary w-100">
                 <i class="bi bi-check"></i> Guardar Alterações
             </button>
@@ -96,13 +96,25 @@
 <script>
 function handlePhotoUpload(input) {
     if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            // Em produção, você faria upload para um servidor
-            // Por enquanto, vamos usar um placeholder
-            alert('Para adicionar uma foto personalizada, cole o URL no campo "URL da Foto de Perfil"');
-        };
-        reader.readAsDataURL(input.files[0]);
+        const file = input.files[0];
+        const formData = new FormData();
+        formData.append('image_file', file);
+        formData.append('email', document.querySelector('input[name="email"]').value);
+        formData.append('profile_photo', document.querySelector('input[name="profile_photo"]').value);
+
+        fetch('/profile', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Se a resposta for sucesso, recarregar a página
+            location.reload();
+        })
+        .catch(error => {
+            console.error('Erro no upload:', error);
+            alert('Erro ao fazer upload da foto. Tente novamente.');
+        });
     }
 }
 </script>

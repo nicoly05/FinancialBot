@@ -217,6 +217,83 @@ class WishListItem(db.Model):
     achieved = db.Column(db.Boolean, default=False)
 
 
+class FinancialPlanning(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    monthly_income = db.Column(db.Float, nullable=False)
+    income_type = db.Column(db.String(50), default='fixa')  # fixa, variavel, mista
+    other_income = db.Column(db.Float, default=0.0)
+    dependents = db.Column(db.Integer, default=0)
+    shares_expenses = db.Column(db.Boolean, default=False)
+
+    # Debt information
+    has_debts = db.Column(db.Boolean, default=False)
+    total_debt = db.Column(db.Float, default=0.0)
+    monthly_debt_payment = db.Column(db.Float, default=0.0)
+    urgent_debt = db.Column(db.Boolean, default=False)
+
+    # Emergency fund
+    emergency_fund_status = db.Column(db.String(50), default='none')  # none, less_1_month, 1_3_months, 3_6_months, more_6_months
+    emergency_fund_amount = db.Column(db.Float, default=0.0)
+    emergency_fund_goal = db.Column(db.Float, default=0.0)
+
+    # Investment information
+    has_investments = db.Column(db.Boolean, default=False)
+    investment_amount = db.Column(db.Float, default=0.0)
+    monthly_investment = db.Column(db.Float, default=0.0)
+    has_retirement = db.Column(db.Boolean, default=False)
+    current_age = db.Column(db.Integer, default=30)
+    retirement_age = db.Column(db.Integer, default=65)
+
+    # Lifestyle
+    lifestyle_budget = db.Column(db.Float, default=0.0)  # Monthly budget for personal enjoyment
+
+    # Dreams and priorities
+    priorities = db.Column(db.Text, default='')  # JSON string of priorities
+    dreams = db.Column(db.Text, default='')  # JSON string of dream answers
+
+    # Calculated distribution
+    security_percentage = db.Column(db.Float, default=15.0)
+    fixed_expenses_percentage = db.Column(db.Float, default=50.0)
+    personal_investment_percentage = db.Column(db.Float, default=10.0)
+    travel_percentage = db.Column(db.Float, default=10.0)
+    big_goals_percentage = db.Column(db.Float, default=15.0)
+
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class FinancialGoal(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    planning_id = db.Column(db.Integer, db.ForeignKey('financial_planning.id'), nullable=True)
+    category = db.Column(db.String(50), nullable=False)  # security, fixed_expenses, personal_investment, travel, big_goals
+    name = db.Column(db.String(200), nullable=False)
+    target_amount = db.Column(db.Float, nullable=False)
+    current_amount = db.Column(db.Float, default=0.0)
+    monthly_contribution = db.Column(db.Float, default=0.0)
+    target_date = db.Column(db.Date, nullable=True)
+    priority = db.Column(db.Integer, default=5)  # 1-10
+    importance = db.Column(db.Integer, default=5)  # 1-10
+    status = db.Column(db.String(50), default='active')  # active, completed, paused
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class FinancialExpense(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    planning_id = db.Column(db.Integer, db.ForeignKey('financial_planning.id'), nullable=True)
+    name = db.Column(db.String(200), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    frequency = db.Column(db.String(50), default='monthly')  # weekly, monthly, yearly
+    is_essential = db.Column(db.Boolean, default=False)
+    importance = db.Column(db.Integer, default=5)  # 1-10
+    can_reduce = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
 @login_manager.user_loader
 def load_user(user_id):
     init_database()
@@ -542,6 +619,134 @@ def profile():
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=current_user)
+
+
+@app.route('/planning', methods=['GET', 'POST'])
+@login_required
+def planning():
+    if request.method == 'POST':
+        try:
+            # Get form data
+            monthly_income = float(request.form.get('monthly_income', 0))
+            income_type = request.form.get('income_type', 'fixa')
+            other_income = float(request.form.get('other_income', 0))
+            dependents = int(request.form.get('dependents', 0))
+            shares_expenses = request.form.get('shares_expenses') == 'on'
+
+            # Debt information
+            has_debts = request.form.get('has_debts') == 'on'
+            total_debt = float(request.form.get('total_debt', 0)) if has_debts else 0
+            monthly_debt_payment = float(request.form.get('monthly_debt_payment', 0)) if has_debts else 0
+            urgent_debt = request.form.get('urgent_debt') == 'on'
+
+            # Emergency fund
+            emergency_fund_status = request.form.get('emergency_fund_status', 'none')
+            emergency_fund_amount = float(request.form.get('emergency_fund_amount', 0))
+
+            # Investment information
+            has_investments = request.form.get('has_investments') == 'on'
+            investment_amount = float(request.form.get('investment_amount', 0)) if has_investments else 0
+            monthly_investment = float(request.form.get('monthly_investment', 0)) if has_investments else 0
+            has_retirement = request.form.get('has_retirement') == 'on'
+            current_age = int(request.form.get('current_age', 30))
+            retirement_age = int(request.form.get('retirement_age', 65))
+
+            # Lifestyle
+            lifestyle_budget = float(request.form.get('lifestyle_budget', 0))
+
+            # Priorities and dreams
+            priorities = request.form.get('priorities', '')
+            dreams = request.form.get('dreams', '')
+
+            # Calculate financial distribution
+            total_income = monthly_income + other_income
+
+            # Calculate distribution based on profile
+            if urgent_debt or total_debt > 0:
+                # Prioritize debt payment
+                security_percentage = 5.0
+                fixed_expenses_percentage = 40.0
+                personal_investment_percentage = 5.0
+                travel_percentage = 5.0
+                big_goals_percentage = 45.0  # Debt payment
+            elif emergency_fund_status in ['none', 'less_1_month']:
+                # Prioritize emergency fund
+                security_percentage = 25.0
+                fixed_expenses_percentage = 50.0
+                personal_investment_percentage = 10.0
+                travel_percentage = 5.0
+                big_goals_percentage = 10.0
+            else:
+                # Balanced distribution
+                security_percentage = 15.0
+                fixed_expenses_percentage = 50.0
+                personal_investment_percentage = 15.0
+                travel_percentage = 10.0
+                big_goals_percentage = 10.0
+
+            # Create or update planning
+            planning = FinancialPlanning.query.filter_by(user_id=current_user.id).first()
+            if not planning:
+                planning = FinancialPlanning(user_id=current_user.id)
+
+            planning.monthly_income = total_income
+            planning.income_type = income_type
+            planning.other_income = other_income
+            planning.dependents = dependents
+            planning.shares_expenses = shares_expenses
+            planning.has_debts = has_debts
+            planning.total_debt = total_debt
+            planning.monthly_debt_payment = monthly_debt_payment
+            planning.urgent_debt = urgent_debt
+            planning.emergency_fund_status = emergency_fund_status
+            planning.emergency_fund_amount = emergency_fund_amount
+            planning.has_investments = has_investments
+            planning.investment_amount = investment_amount
+            planning.monthly_investment = monthly_investment
+            planning.has_retirement = has_retirement
+            planning.current_age = current_age
+            planning.retirement_age = retirement_age
+            planning.lifestyle_budget = lifestyle_budget
+            planning.priorities = priorities
+            planning.dreams = dreams
+            planning.security_percentage = security_percentage
+            planning.fixed_expenses_percentage = fixed_expenses_percentage
+            planning.personal_investment_percentage = personal_investment_percentage
+            planning.travel_percentage = travel_percentage
+            planning.big_goals_percentage = big_goals_percentage
+
+            db.session.add(planning)
+            db.session.commit()
+
+            flash('Planejamento financeiro criado com sucesso!', 'success')
+            return redirect(url_for('planning'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao criar planejamento: {str(e)}', 'error')
+            return redirect(url_for('planning'))
+
+    # GET request - just get existing planning or show empty form
+    planning = FinancialPlanning.query.filter_by(user_id=current_user.id).first()
+
+    # Calculate values for display if planning exists
+    planning_data = None
+    if planning and planning.monthly_income > 0:
+        planning_data = {
+            'monthly_income': planning.monthly_income,
+            'security_amount': planning.monthly_income * (planning.security_percentage / 100),
+            'fixed_expenses_amount': planning.monthly_income * (planning.fixed_expenses_percentage / 100),
+            'personal_investment_amount': planning.monthly_income * (planning.personal_investment_percentage / 100),
+            'travel_amount': planning.monthly_income * (planning.travel_percentage / 100),
+            'big_goals_amount': planning.monthly_income * (planning.big_goals_percentage / 100),
+            'security_percentage': planning.security_percentage,
+            'fixed_expenses_percentage': planning.fixed_expenses_percentage,
+            'personal_investment_percentage': planning.personal_investment_percentage,
+            'travel_percentage': planning.travel_percentage,
+            'big_goals_percentage': planning.big_goals_percentage,
+        }
+
+    return render_template('planning.html', planning=planning, planning_data=planning_data)
 
 
 @app.route('/wishlist', methods=['GET', 'POST'])

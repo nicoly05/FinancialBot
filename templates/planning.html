@@ -1,0 +1,838 @@
+{% extends "base.html" %}
+
+{% block title %}Planejamento Financeiro - FinancialBot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .planning-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .step-indicator {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 2rem;
+        position: relative;
+    }
+
+    .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+    }
+
+    .step-number {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--gradient-main);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .step.active .step-number {
+        transform: scale(1.2);
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    .step.completed .step-number {
+        background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .step-label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-light);
+        text-align: center;
+    }
+
+    .step.active .step-label {
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+
+    .step-line {
+        position: absolute;
+        top: 20px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: #e5e7eb;
+        z-index: 0;
+    }
+
+    .step-progress {
+        position: absolute;
+        top: 20px;
+        left: 0;
+        height: 2px;
+        background: var(--gradient-main);
+        z-index: 0;
+        transition: width 0.3s ease;
+    }
+
+    .step-content {
+        display: none;
+        animation: fadeIn 0.5s ease;
+    }
+
+    .step-content.active {
+        display: block;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .option-card {
+        border: 2px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 1rem;
+    }
+
+    .option-card:hover {
+        border-color: var(--primary-color);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.1);
+    }
+
+    .option-card.selected {
+        border-color: var(--primary-color);
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(236, 72, 153, 0.05));
+    }
+
+    .option-card input[type="radio"] {
+        display: none;
+    }
+
+    .priority-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 16px;
+        border-radius: 25px;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        font-weight: 600;
+        margin: 0.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .priority-badge:hover {
+        transform: scale(1.05);
+    }
+
+    .priority-badge.selected {
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    .expense-item {
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid #e5e7eb;
+    }
+
+    .planning-result {
+        background: linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-top: 2rem;
+    }
+
+    .distribution-bar {
+        height: 30px;
+        border-radius: 15px;
+        overflow: hidden;
+        display: flex;
+        margin: 1rem 0;
+    }
+
+    .distribution-segment {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 0.85rem;
+        transition: all 0.3s ease;
+    }
+
+    .goal-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border-left: 4px solid var(--primary-color);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+
+    .checklist-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-radius: 10px;
+        margin-bottom: 0.5rem;
+        background: #f9fafb;
+        transition: all 0.3s ease;
+    }
+
+    .checklist-item:hover {
+        background: #f3f4f6;
+    }
+
+    .checklist-item input[type="checkbox"] {
+        margin-right: 1rem;
+        width: 20px;
+        height: 20px;
+        accent-color: var(--primary-color);
+    }
+
+    .distribution-segment {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 0.85rem;
+        transition: all 0.3s ease;
+    }
+
+    .segment-security {
+        background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .segment-fixed {
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    }
+
+    .segment-personal {
+        background: linear-gradient(135deg, #06b6d4, #0891b2);
+    }
+
+    .segment-travel {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+
+    .segment-goals {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="planning-container">
+    <div class="card p-4">
+        <h2 class="mb-4"><i class="bi bi-calculator"></i> Planejamento Financeiro Personalizado</h2>
+        <p class="text-muted mb-4">Vamos criar um plano financeiro personalizado para você responder algumas perguntas sobre sua situação financeira e objetivos.</p>
+
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+            <div class="step-line"></div>
+            <div class="step-progress" id="stepProgress" style="width: 0%"></div>
+
+            <div class="step active" data-step="1">
+                <div class="step-number">1</div>
+                <div class="step-label">Renda</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-number">2</div>
+                <div class="step-label">Dívidas</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-number">3</div>
+                <div class="step-label">Gastos</div>
+            </div>
+            <div class="step" data-step="4">
+                <div class="step-number">4</div>
+                <div class="step-label">Segurança</div>
+            </div>
+            <div class="step" data-step="5">
+                <div class="step-number">5</div>
+                <div class="step-label">Prioridades</div>
+            </div>
+            <div class="step" data-step="6">
+                <div class="step-number">6</div>
+                <div class="step-label">Objetivos</div>
+            </div>
+            <div class="step" data-step="7">
+                <div class="step-number">7</div>
+                <div class="step-label">Resultado</div>
+            </div>
+        </div>
+
+        <!-- Step Content -->
+        <form id="planningForm" method="POST">
+            <!-- Step 1: Renda -->
+            <div class="step-content active" data-step="1">
+                <h4 class="mb-3">💰 Sua Renda</h4>
+                <div class="mb-3">
+                    <label class="form-label">Qual é sua renda líquida mensal? (€)</label>
+                    <input type="number" class="form-control" name="monthly_income" required min="0" step="0.01" placeholder="Ex: 3000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Sua renda é:</label>
+                    <div class="option-card">
+                        <label>
+                            <input type="radio" name="income_type" value="fixa" checked>
+                            <strong>Fixa</strong> - Salário constante todo mês
+                        </label>
+                    </div>
+                    <div class="option-card">
+                        <label>
+                            <input type="radio" name="income_type" value="variavel">
+                            <strong>Variável</strong> - Muda de mês para mês
+                        </label>
+                    </div>
+                    <div class="option-card">
+                        <label>
+                            <input type="radio" name="income_type" value="mista">
+                            <strong>Mista</strong> - Parte fixa + parte variável
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Você possui outras fontes de renda? (€)</label>
+                    <input type="number" class="form-control" name="other_income" min="0" step="0.01" placeholder="Ex: 500">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Quantas pessoas dependem financeiramente de você?</label>
+                    <input type="number" class="form-control" name="dependents" min="0" value="0">
+                </div>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" name="shares_expenses">
+                        Você divide as despesas da casa com alguém?
+                    </label>
+                </div>
+            </div>
+
+            <!-- Step 2: Dívidas -->
+            <div class="step-content" data-step="2">
+                <h4 class="mb-3">💳 Suas Dívidas</h4>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" name="has_debts" id="hasDebtsCheck">
+                        Você possui dívidas atualmente?
+                    </label>
+                </div>
+                <div id="debtDetails" style="display: none;">
+                    <div class="mb-3">
+                        <label class="form-label">Qual o valor total aproximado das suas dívidas? (€)</label>
+                        <input type="number" class="form-control" name="total_debt" min="0" step="0.01" placeholder="Ex: 5000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Quanto paga mensalmente em parcelas? (€)</label>
+                        <input type="number" class="form-control" name="monthly_debt_payment" min="0" step="0.01" placeholder="Ex: 300">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Possui cartão de crédito parcelado?</label>
+                        <select class="form-select" name="credit_card_debt">
+                            <option value="no">Não</option>
+                            <option value="yes">Sim</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Possui empréstimos?</label>
+                        <select class="form-select" name="loans">
+                            <option value="no">Não</option>
+                            <option value="yes">Sim</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Existe alguma dívida que considera urgente?</label>
+                        <label class="form-check-label">
+                            <input type="checkbox" class="form-check-input" name="urgent_debt">
+                            Sim, tenho dívidas urgentes
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Gastos Fixos -->
+            <div class="step-content" data-step="3">
+                <h4 class="mb-3">🏠 Seus Gastos Fixos</h4>
+                <p class="text-muted mb-3">Adicione seus principais gastos fixos mensais:</p>
+                <div id="expensesContainer">
+                    <div class="expense-item">
+                        <div class="row">
+                            <div class="col-md-4 mb-2">
+                                <input type="text" class="form-control" name="expense_name[]" placeholder="Nome (ex: Aluguel)">
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <input type="number" class="form-control" name="expense_amount[]" placeholder="Valor (€)" min="0" step="0.01">
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <select class="form-select" name="expense_category[]">
+                                    <option value="housing">Moradia</option>
+                                    <option value="food">Alimentação</option>
+                                    <option value="transport">Transporte</option>
+                                    <option value="utilities">Contas</option>
+                                    <option value="health">Saúde</option>
+                                    <option value="entertainment">Lazer</option>
+                                    <option value="other">Outros</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-check-label">
+                                    <input type="checkbox" class="form-check-input" name="expense_essential[]">
+                                    Essencial
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addExpense()">
+                    <i class="bi bi-plus"></i> Adicionar Gasto
+                </button>
+            </div>
+
+            <!-- Step 4: Segurança Financeira -->
+            <div class="step-content" data-step="4">
+                <h4 class="mb-3">🛡️ Sua Segurança Financeira</h4>
+                <div class="mb-3">
+                    <label class="form-label">Você possui reserva de emergência?</label>
+                    <select class="form-select" name="emergency_fund_status">
+                        <option value="none">Não tenho</option>
+                        <option value="less_1_month">Menos de 1 mês dos meus gastos</option>
+                        <option value="1_3_months">1-3 meses</option>
+                        <option value="3_6_months">3-6 meses</option>
+                        <option value="more_6_months">Mais de 6 meses</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Qual valor possui atualmente em reserva? (€)</label>
+                    <input type="number" class="form-control" name="emergency_fund_amount" min="0" step="0.01" placeholder="Ex: 3000">
+                </div>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" name="has_investments" id="hasInvestmentsCheck">
+                        Você possui investimentos?
+                    </label>
+                </div>
+                <div id="investmentDetails" style="display: none;">
+                    <div class="mb-3">
+                        <label class="form-label">Quanto possui investido? (€)</label>
+                        <input type="number" class="form-control" name="investment_amount" min="0" step="0.01" placeholder="Ex: 10000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Quanto investe mensalmente? (€)</label>
+                        <input type="number" class="form-control" name="monthly_investment" min="0" step="0.01" placeholder="Ex: 200">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" name="has_retirement">
+                        Você contribui para aposentadoria?
+                    </label>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Sua idade atual:</label>
+                        <input type="number" class="form-control" name="current_age" min="18" max="100" value="30">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Idade desejada para independência financeira:</label>
+                        <input type="number" class="form-control" name="retirement_age" min="18" max="100" value="65">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Prioridades -->
+            <div class="step-content" data-step="5">
+                <h4 class="mb-3">🎯 Suas Prioridades</h4>
+                <p class="text-muted mb-3">Selecione seus principais objetivos financeiros:</p>
+                <div class="mb-3">
+                    <div class="priority-badges">
+                        <span class="priority-badge" data-priority="emergency">🛡️ Reserva de emergência</span>
+                        <span class="priority-badge" data-priority="retirement">👴 Aposentadoria</span>
+                        <span class="priority-badge" data-priority="investments">📈 Investimentos</span>
+                        <span class="priority-badge" data-priority="house">🏠 Comprar casa</span>
+                        <span class="priority-badge" data-priority="car">🚗 Comprar carro</span>
+                        <span class="priority-badge" data-priority="travel">✈️ Viajar</span>
+                        <span class="priority-badge" data-priority="education">📚 Cursos/Faculdade</span>
+                        <span class="priority-badge" data-priority="business">💼 Negócio próprio</span>
+                        <span class="priority-badge" data-priority="wedding">💒 Casamento</span>
+                        <span class="priority-badge" data-priority="independence">🚀 Independência financeira</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Quanto dinheiro você gostaria de ter disponível todos os meses para aproveitar sua vida sem culpa? (€)</label>
+                    <input type="number" class="form-control" name="lifestyle_budget" min="0" step="0.01" placeholder="Ex: 300">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Se você tivesse dinheiro suficiente, quais seriam as 5 coisas que mais gostaria de realizar nos próximos anos?</label>
+                    <textarea class="form-control" name="dreams" rows="3" placeholder="Liste seus 5 principais sonhos..."></textarea>
+                </div>
+            </div>
+
+            <!-- Step 6: Objetivos Específicos -->
+            <div class="step-content" data-step="6">
+                <h4 class="mb-3">🎯 Seus Objetivos Específicos</h4>
+                <p class="text-muted mb-3">Para cada prioridade selecionada, defina os detalhes:</p>
+                <div id="goalsContainer">
+                    <!-- Goals will be added dynamically -->
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addGoal()">
+                    <i class="bi bi-plus"></i> Adicionar Objetivo
+                </button>
+            </div>
+
+            <!-- Step 7: Resultado -->
+            <div class="step-content" data-step="7">
+                <h4 class="mb-3">🎉 Seu Plano Financeiro</h4>
+                <div id="planningResult">
+                    {% if planning_data %}
+                    <div class="planning-result">
+                        <h5 class="mb-4">💰 Sua Renda Mensal: €{{ "%.2f"|format(planning_data.monthly_income) }}</h5>
+
+                        <h6 class="mb-3">Distribuição Financeira:</h6>
+                        <div class="distribution-bar" id="distributionBar">
+                            <div class="distribution-segment segment-security" id="segmentSecurity" data-width="{{ planning_data.security_percentage }}">
+                                {{ "%.0f"|format(planning_data.security_percentage) }}%
+                            </div>
+                            <div class="distribution-segment segment-fixed" id="segmentFixed" data-width="{{ planning_data.fixed_expenses_percentage }}">
+                                {{ "%.0f"|format(planning_data.fixed_expenses_percentage) }}%
+                            </div>
+                            <div class="distribution-segment segment-personal" id="segmentPersonal" data-width="{{ planning_data.personal_investment_percentage }}">
+                                {{ "%.0f"|format(planning_data.personal_investment_percentage) }}%
+                            </div>
+                            <div class="distribution-segment segment-travel" id="segmentTravel" data-width="{{ planning_data.travel_percentage }}">
+                                {{ "%.0f"|format(planning_data.travel_percentage) }}%
+                            </div>
+                            <div class="distribution-segment segment-goals" id="segmentGoals" data-width="{{ planning_data.big_goals_percentage }}">
+                                {{ "%.0f"|format(planning_data.big_goals_percentage) }}%
+                            </div>
+                        </div>
+
+                        <div class="row mt-4">
+                            <div class="col-md-6 mb-3">
+                                <div class="card p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i class="bi bi-shield"></i>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Segurança/Futuro</small>
+                                            <div class="fw-bold">€{{ "%.2f"|format(planning_data.security_amount) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="card p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #8b5cf6, #ec4899); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i class="bi bi-house"></i>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Gastos Fixos</small>
+                                            <div class="fw-bold">€{{ "%.2f"|format(planning_data.fixed_expenses_amount) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="card p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #06b6d4, #0891b2); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i class="bi bi-person"></i>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Investimento Pessoal</small>
+                                            <div class="fw-bold">€{{ "%.2f"|format(planning_data.personal_investment_amount) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="card p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #f59e0b, #d97706); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i class="bi bi-airplane"></i>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Viagens</small>
+                                            <div class="fw-bold">€{{ "%.2f"|format(planning_data.travel_amount) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="card p-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #ef4444, #dc2626); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i class="bi bi-buildings"></i>
+                                        </div>
+                                        <div>
+                                            <small class="text-muted">Grandes Objetivos</small>
+                                            <div class="fw-bold">€{{ "%.2f"|format(planning_data.big_goals_amount) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <h6 class="mb-3">✅ Seu Checklist Mensal:</h6>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.security_amount) }} para segurança/futuro</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Pagar gastos fixos (€{{ "%.2f"|format(planning_data.fixed_expenses_amount) }})</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.personal_investment_amount) }} para investimento pessoal</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.travel_amount) }} para viagens</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.big_goals_amount) }} para grandes objetivos</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Atualizar progresso das metas</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Revisar gastos do mês</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Preencha o formulário para gerar seu plano financeiro personalizado.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="d-flex justify-content-between mt-4">
+                <button type="button" class="btn btn-outline-secondary" id="prevBtn" onclick="prevStep()" style="display: none;">
+                    <i class="bi bi-arrow-left"></i> Anterior
+                </button>
+                <button type="button" class="btn btn-primary" id="nextBtn" onclick="nextStep()">
+                    Próximo <i class="bi bi-arrow-right"></i>
+                </button>
+                <button type="button" class="btn btn-success" id="submitBtn" onclick="submitForm()" style="display: none;">
+                    <i class="bi bi-check"></i> Criar Plano
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentStep = 1;
+const totalSteps = 7;
+
+function updateStepIndicator() {
+    document.querySelectorAll('.step').forEach(step => {
+        const stepNum = parseInt(step.dataset.step);
+        step.classList.remove('active', 'completed');
+        if (stepNum === currentStep) {
+            step.classList.add('active');
+        } else if (stepNum < currentStep) {
+            step.classList.add('completed');
+        }
+    });
+
+    const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
+    document.getElementById('stepProgress').style.width = progress + '%';
+}
+
+function showStep(step) {
+    document.querySelectorAll('.step-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.querySelector(`.step-content[data-step="${step}"]`).classList.add('active');
+
+    document.getElementById('prevBtn').style.display = step > 1 ? 'block' : 'none';
+    document.getElementById('nextBtn').style.display = step < totalSteps ? 'block' : 'none';
+    document.getElementById('submitBtn').style.display = step === totalSteps ? 'block' : 'none';
+
+    updateStepIndicator();
+}
+
+function nextStep() {
+    if (currentStep < totalSteps) {
+        currentStep++;
+        showStep(currentStep);
+    }
+}
+
+function prevStep() {
+    if (currentStep > 1) {
+        currentStep--;
+        showStep(currentStep);
+    }
+}
+
+function submitForm() {
+    const form = document.getElementById('planningForm');
+    const formData = new FormData(form);
+
+    fetch('/planning', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Parse the HTML response and extract the planning result
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const planningResult = doc.getElementById('planningResult');
+
+        if (planningResult) {
+            document.getElementById('planningResult').innerHTML = planningResult.innerHTML;
+        } else {
+            alert('Plano criado com sucesso! Recarregando a página...');
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao criar plano. Tente novamente.');
+    });
+}
+
+function addExpense() {
+    const container = document.getElementById('expensesContainer');
+    const expenseItem = document.createElement('div');
+    expenseItem.className = 'expense-item';
+    expenseItem.innerHTML = `
+        <div class="row">
+            <div class="col-md-4 mb-2">
+                <input type="text" class="form-control" name="expense_name[]" placeholder="Nome (ex: Aluguel)">
+            </div>
+            <div class="col-md-3 mb-2">
+                <input type="number" class="form-control" name="expense_amount[]" placeholder="Valor (€)" min="0" step="0.01">
+            </div>
+            <div class="col-md-3 mb-2">
+                <select class="form-select" name="expense_category[]">
+                    <option value="housing">Moradia</option>
+                    <option value="food">Alimentação</option>
+                    <option value="transport">Transporte</option>
+                    <option value="utilities">Contas</option>
+                    <option value="health">Saúde</option>
+                    <option value="entertainment">Lazer</option>
+                    <option value="other">Outros</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-2">
+                <label class="form-check-label">
+                    <input type="checkbox" class="form-check-input" name="expense_essential[]">
+                    Essencial
+                </label>
+            </div>
+        </div>
+    `;
+    container.appendChild(expenseItem);
+}
+
+function addGoal() {
+    const container = document.getElementById('goalsContainer');
+    const goalItem = document.createElement('div');
+    goalItem.className = 'goal-card';
+    goalItem.innerHTML = `
+        <div class="row">
+            <div class="col-md-6 mb-2">
+                <label class="form-label">Nome do objetivo</label>
+                <input type="text" class="form-control" name="goal_name[]" placeholder="Ex: Viagem para Paris">
+            </div>
+            <div class="col-md-6 mb-2">
+                <label class="form-label">Categoria</label>
+                <select class="form-select" name="goal_category[]">
+                    <option value="security">🛡️ Segurança/Futuro</option>
+                    <option value="personal">🌱 Investimento Pessoal</option>
+                    <option value="travel">✈️ Viagens</option>
+                    <option value="big_goals">🏡 Grandes Objetivos</option>
+                </select>
+            </div>
+            <div class="col-md-4 mb-2">
+                <label class="form-label">Valor necessário (€)</label>
+                <input type="number" class="form-control" name="goal_amount[]" min="0" step="0.01" placeholder="Ex: 5000">
+            </div>
+            <div class="col-md-4 mb-2">
+                <label class="form-label">Valor já guardado (€)</label>
+                <input type="number" class="form-control" name="goal_current[]" min="0" step="0.01" placeholder="Ex: 1000">
+            </div>
+            <div class="col-md-4 mb-2">
+                <label class="form-label">Prazo (meses)</label>
+                <input type="number" class="form-control" name="goal_deadline[]" min="1" placeholder="Ex: 12">
+            </div>
+        </div>
+    `;
+    container.appendChild(goalItem);
+}
+
+// Event listeners
+document.querySelectorAll('.option-card').forEach(card => {
+    card.addEventListener('click', function() {
+        const radio = this.querySelector('input[type="radio"]');
+        if (radio) {
+            radio.checked = true;
+            document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+            this.classList.add('selected');
+        }
+    });
+});
+
+document.querySelectorAll('.priority-badge').forEach(badge => {
+    badge.addEventListener('click', function() {
+        this.classList.toggle('selected');
+    });
+});
+
+document.getElementById('hasDebtsCheck').addEventListener('change', function() {
+    document.getElementById('debtDetails').style.display = this.checked ? 'block' : 'none';
+});
+
+document.getElementById('hasInvestmentsCheck').addEventListener('change', function() {
+    document.getElementById('investmentDetails').style.display = this.checked ? 'block' : 'none';
+});
+
+// Set distribution widths dynamically after page load
+document.addEventListener('DOMContentLoaded', function() {
+    const segments = [
+        { id: 'segmentSecurity', dataAttr: 'data-width' },
+        { id: 'segmentFixed', dataAttr: 'data-width' },
+        { id: 'segmentPersonal', dataAttr: 'data-width' },
+        { id: 'segmentTravel', dataAttr: 'data-width' },
+        { id: 'segmentGoals', dataAttr: 'data-width' }
+    ];
+
+    segments.forEach(segment => {
+        const element = document.getElementById(segment.id);
+        if (element) {
+            const width = element.getAttribute(segment.dataAttr);
+            if (width) {
+                element.style.width = width + '%';
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
