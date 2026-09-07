@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+from supabase import create_client
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, upgrade
@@ -10,11 +11,41 @@ from datetime import datetime, timedelta
 from config import Config
 import requests
 from werkzeug.utils import secure_filename
+from datetime import datetime
+
+
+def upload_image_to_supabase(file, folder):
+    """Upload de imagem para Supabase Storage"""
+    try:
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_filename = f"{timestamp}_{filename}"
+
+        # Ler arquivo
+        file.seek(0)
+        file_content = file.read()
+
+        # Upload para Supabase - bucket correto é "image" (não "images")
+        bucket_name = "image"
+        response = supabase.storage.from_(bucket_name).upload(
+            f"{folder}/{unique_filename}",
+            file_content
+        )
+
+        # Obter URL pública
+        public_url = f"{Config.SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{folder}/{unique_filename}"
+        return public_url
+    except Exception as e:
+        print(f"Erro no upload para Supabase: {e}")
+        # Fallback para armazenamento local se falhar
+        return None
 
 app = Flask(__name__)
 app.config.from_object(Config)
-app.config['UPLOAD_FOLDER'] = Config.UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
+
+# Supabase client
+supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
 
 # SQLAlchemy / Migrations setup
 db = SQLAlchemy(app)
@@ -495,6 +526,13 @@ def profile():
         email = request.form.get('email')
         profile_photo = request.form.get('profile_photo')
 
+        # Handle file upload to Supabase
+        image_file = request.files.get('image_file')
+        if image_file and image_file.filename:
+            image_url = upload_image_to_supabase(image_file, 'profile')
+            if image_url:
+                profile_photo = image_url
+
         current_user.email = email
         if profile_photo:
             current_user.profile_photo = profile_photo
@@ -510,21 +548,39 @@ def profile():
 @login_required
 def wishlist():
     if request.method == 'POST':
+        print("=== DEBUG: Formulário POST recebido ===")
+        print(f"Content-Type: {request.content_type}")
+        print(f"Form data: {request.form}")
+        print(f"Files: {request.files}")
+
         name = request.form.get('name')
         total_value = request.form.get('total_value')
         link = request.form.get('link')
         image_url = request.form.get('image_url')
         category_id = request.form.get('category_id')
 
-        # Handle file upload
+        print(f"Nome: {name}, Valor: {total_value}, Link: {link}, Imagem URL: {image_url}, Categoria: {category_id}")
+
+        # Handle file upload to Supabase
         image_file = request.files.get('image_file')
+        print(f"Arquivo de imagem: {image_file}")
+        if image_file:
+            print(f"Nome do arquivo: {image_file.filename}")
+            print(f"Tipo de conteúdo: {image_file.content_type}")
+
         if image_file and image_file.filename:
-            filename = secure_filename(image_file.filename)
-            # Add timestamp to avoid conflicts
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"{timestamp}_{filename}"
-            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            image_url = f"/uploads/{filename}"
+            uploaded_url = upload_image_to_supabase(image_file, 'wishlist')
+            if uploaded_url:
+                image_url = uploaded_url
+                print(f"Upload Supabase sucesso: {image_url}")
+            else:
+                # Fallback para armazenamento local
+                filename = secure_filename(image_file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_filename = f"{timestamp}_{filename}"
+                image_file.save(os.path.join(BASE_DIR, 'uploads', unique_filename))
+                image_url = f"/uploads/{unique_filename}"
+                print(f"Upload local sucesso: {image_url}")
 
         if name and total_value:
             wishlist_item = WishListItem(
@@ -537,6 +593,7 @@ def wishlist():
             )
             db.session.add(wishlist_item)
             db.session.commit()
+            print(f"Item salvo com image_url: {wishlist_item.image_url}")
             flash('Item adicionado à Wish List!', 'success')
             return redirect(url_for('wishlist'))
 
@@ -557,7 +614,7 @@ def wishlist():
 @app.route('/uploads/<filename>')
 @login_required
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(os.path.join(BASE_DIR, 'uploads'), filename)
 
 
 @app.route('/dashboard')
@@ -1093,7 +1150,14 @@ def api_return_wishlist_funds(item_id):
 @app.route('/api/wishlist/<int:item_id>', methods=['PUT'])
 @login_required
 def api_update_wishlist_item(item_id):
-    data = request.get_json() or {}
+    # Handle both JSON and FormData
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        data = request.form.to_dict()
+        image_file = request.files.get('image_file')
+    else:
+        data = request.get_json() or {}
+        image_file = None
+
     name = data.get('name')
     total_value = data.get('total_value')
     link = data.get('link')
@@ -1115,6 +1179,19 @@ def api_update_wishlist_item(item_id):
             item.image_url = image_url
         if category_id is not None:
             item.category_id = int(category_id) if category_id else None
+
+        # Handle file upload if present
+        if image_file and image_file.filename:
+            uploaded_url = upload_image_to_supabase(image_file, 'wishlist')
+            if uploaded_url:
+                item.image_url = uploaded_url
+            else:
+                # Fallback para armazenamento local
+                filename = secure_filename(image_file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                unique_filename = f"{timestamp}_{filename}"
+                image_file.save(os.path.join(BASE_DIR, 'uploads', unique_filename))
+                item.image_url = f"/uploads/{unique_filename}"
 
         # Recalcular achieved status
         if item.saved_amount >= item.total_value:
@@ -1271,4 +1348,4 @@ def handle_value_modification(message, user_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5003)
+    app.run(debug=True, port=5004)

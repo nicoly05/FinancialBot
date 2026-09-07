@@ -159,18 +159,25 @@
     <div class="row">
         {% for item in wishlist_items %}
         <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card wishlist-card">
+            <div class="card wishlist-card"
+                 data-id="{{ item.id }}"
+                 data-name="{{ item.name }}"
+                 data-total-value="{{ item.total_value }}"
+                 data-saved-amount="{{ item.saved_amount }}"
+                 data-link="{{ item.link or '' }}"
+                 data-image-url="{{ item.image_url or '' }}"
+                 data-category-id="{{ item.category_id or '' }}">
                 {% if item.achieved %}
                 <div class="achieved-badge">
                     <i class="bi bi-check-circle"></i> Conquistado!
                 </div>
                 {% endif %}
 
-                <button class="delete-btn" onclick="deleteWishItem({{ item.id }}, {{ item.saved_amount }})">
+                <button class="delete-btn" type="button" title="Remover">
                     <i class="bi bi-trash"></i>
                 </button>
 
-                <button class="edit-btn" onclick="openEditModal({{ item.id }}, '{{ item.name }}', {{ item.total_value }}, '{{ item.link or '' }}', '{{ item.image_url or '' }}', {{ item.category_id or 'null' }})">
+                <button class="edit-btn" type="button" title="Editar">
                     <i class="bi bi-pencil"></i>
                 </button>
 
@@ -193,7 +200,7 @@
                     </div>
 
                     <div class="progress-container">
-                        <div class="progress-bar" style="width: {{ (item.saved_amount / item.total_value) * 100 }}%"></div>
+                        <div class="progress-bar" data-progress="{{ (item.saved_amount / item.total_value) * 100 }}"></div>
                     </div>
 
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -208,7 +215,7 @@
                     </div>
 
                     <div class="d-flex gap-2">
-                        <button class="btn btn-primary flex-1" onclick="openAddFundsModal({{ item.id }}, '{{ item.name }}', {{ item.total_value }}, {{ item.saved_amount }})">
+                        <button class="btn btn-primary flex-1 add-funds-trigger" type="button">
                             <i class="bi bi-plus-circle"></i> Guardar
                         </button>
                         {% if item.link %}
@@ -256,7 +263,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="addWishForm" method="POST">
+                <form id="addWishForm" method="POST" enctype="multipart/form-data" action="/wishlist">
                     <div class="mb-3">
                         <label class="form-label">Nome do Produto</label>
                         <input type="text" class="form-control" name="name" required placeholder="Ex: iPhone 15 Pro">
@@ -385,7 +392,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="editWishForm">
+                <form id="editWishForm" enctype="multipart/form-data">
                     <input type="hidden" id="editItemId">
                     <div class="mb-3">
                         <label class="form-label">Nome do Produto</label>
@@ -402,6 +409,11 @@
                     <div class="mb-3">
                         <label class="form-label">URL da Imagem (opcional)</label>
                         <input type="url" class="form-control" id="editImageUrl" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ou carregar nova imagem (opcional)</label>
+                        <input type="file" class="form-control" id="editImageFile" accept="image/*">
+                        <small class="text-muted">Formatos aceitos: JPG, PNG, GIF (máx. 16MB)</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Categoria (opcional)</label>
@@ -424,6 +436,44 @@
 
 {% block extra_js %}
 <script>
+// ---- Preenche a largura das barras de progresso (sem Jinja dentro do CSS) ----
+document.querySelectorAll('.progress-bar').forEach(function (bar) {
+    const progress = parseFloat(bar.dataset.progress) || 0;
+    bar.style.width = Math.min(progress, 100) + '%';
+});
+
+// ---- Ligação dos botões de cada card via data-attributes (sem Jinja dentro do JS) ----
+document.querySelectorAll('.wishlist-card').forEach(function (card) {
+    const id = card.dataset.id;
+    const name = card.dataset.name;
+    const totalValue = parseFloat(card.dataset.totalValue);
+    const savedAmount = parseFloat(card.dataset.savedAmount);
+    const link = card.dataset.link;
+    const imageUrl = card.dataset.imageUrl;
+    const categoryId = card.dataset.categoryId;
+
+    const delBtn = card.querySelector('.delete-btn');
+    if (delBtn) {
+        delBtn.addEventListener('click', function () {
+            deleteWishItem(id, savedAmount);
+        });
+    }
+
+    const editBtn = card.querySelector('.edit-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', function () {
+            openEditModal(id, name, totalValue, link, imageUrl, categoryId);
+        });
+    }
+
+    const addFundsBtn = card.querySelector('.add-funds-trigger');
+    if (addFundsBtn) {
+        addFundsBtn.addEventListener('click', function () {
+            openAddFundsModal(id, name, totalValue, savedAmount);
+        });
+    }
+});
+
 function deleteWishItem(itemId, savedAmount) {
     if (!confirm('Tem certeza que deseja remover este item da Wish List?')) return;
 
@@ -561,31 +611,61 @@ document.getElementById('editWishForm').addEventListener('submit', function(e) {
     const link = document.getElementById('editLink').value;
     const imageUrl = document.getElementById('editImageUrl').value;
     const categoryId = document.getElementById('editCategoryId').value;
+    const imageFile = document.getElementById('editImageFile').files[0];
 
-    fetch('/api/wishlist/' + itemId, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            name: name,
-            total_value: parseFloat(totalValue),
-            link: link || null,
-            image_url: imageUrl || null,
-            category_id: categoryId ? parseInt(categoryId) : null
+    // Usar FormData se houver arquivo, caso contrário JSON
+    if (imageFile) {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('total_value', totalValue);
+        formData.append('link', link || '');
+        formData.append('image_url', imageUrl || '');
+        formData.append('category_id', categoryId || '');
+        formData.append('image_file', imageFile);
+
+        fetch('/api/wishlist/' + itemId, {
+            method: 'PUT',
+            body: formData
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('editWishModal')).hide();
-            location.reload();
-        } else {
-            alert('Erro ao atualizar item: ' + (data.error || 'Erro desconhecido'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Erro ao comunicar com o servidor');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('editWishModal')).hide();
+                location.reload();
+            } else {
+                alert('Erro ao atualizar item: ' + (data.error || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erro ao comunicar com o servidor');
+        });
+    } else {
+        fetch('/api/wishlist/' + itemId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                total_value: parseFloat(totalValue),
+                link: link || null,
+                image_url: imageUrl || null,
+                category_id: categoryId ? parseInt(categoryId) : null
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('editWishModal')).hide();
+                location.reload();
+            } else {
+                alert('Erro ao atualizar item: ' + (data.error || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erro ao comunicar com o servidor');
+        });
+    }
 });
 </script>
 {% endblock %}
