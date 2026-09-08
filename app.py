@@ -3,11 +3,12 @@ from supabase import create_client
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, upgrade
+from sqlalchemy import inspect, text
 import bcrypt
 import json
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from config import Config
 import requests
 from werkzeug.utils import secure_filename
@@ -55,9 +56,33 @@ migrate = Migrate(app, db)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def _ensure_financial_planning_columns():
+    with app.app_context():
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        if 'financial_planning' not in tables:
+            db.create_all()
+            return
+
+        existing_columns = {column['name'] for column in inspector.get_columns('financial_planning')}
+        missing_columns = {
+            'name': 'VARCHAR(200)',
+            'observation': 'TEXT',
+            'plan_date': 'DATE',
+            'is_favorite': 'BOOLEAN DEFAULT 0'
+        }
+
+        for column_name, column_sql in missing_columns.items():
+            if column_name not in existing_columns:
+                db.session.execute(text(f'ALTER TABLE financial_planning ADD COLUMN {column_name} {column_sql}'))
+
+        db.session.commit()
+
+
 def init_database():
     with app.app_context():
         db.create_all()
+        _ensure_financial_planning_columns()
         migrations_dir = os.path.join(BASE_DIR, 'migrations')
         if os.path.isdir(migrations_dir):
             try:
@@ -220,6 +245,10 @@ class WishListItem(db.Model):
 class FinancialPlanning(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), default='Planejamento')
+    observation = db.Column(db.Text, default='')
+    plan_date = db.Column(db.Date, default=date.today)
+    is_favorite = db.Column(db.Boolean, default=False)
     monthly_income = db.Column(db.Float, nullable=False)
     income_type = db.Column(db.String(50), default='fixa')  # fixa, variavel, mista
     other_income = db.Column(db.Float, default=0.0)
@@ -320,6 +349,19 @@ def _get_or_create_user_session(user_id):
 
 def _get_user_categories(user_id):
     return Category.query.filter_by(user_id=user_id).order_by(Category.name.asc()).all()
+
+
+def _parse_plan_date(raw_value):
+    if not raw_value:
+        return date.today()
+
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError:
+        try:
+            return datetime.strptime(raw_value, '%d/%m/%Y').date()
+        except ValueError:
+            return date.today()
 
 
 def _resolve_category(user_id, category_name, user_categories=None):
@@ -626,24 +668,20 @@ def profile():
 def planning():
     if request.method == 'POST':
         try:
-            # Get form data
             monthly_income = float(request.form.get('monthly_income', 0))
             income_type = request.form.get('income_type', 'fixa')
             other_income = float(request.form.get('other_income', 0))
             dependents = int(request.form.get('dependents', 0))
             shares_expenses = request.form.get('shares_expenses') == 'on'
 
-            # Debt information
             has_debts = request.form.get('has_debts') == 'on'
             total_debt = float(request.form.get('total_debt', 0)) if has_debts else 0
             monthly_debt_payment = float(request.form.get('monthly_debt_payment', 0)) if has_debts else 0
             urgent_debt = request.form.get('urgent_debt') == 'on'
 
-            # Emergency fund
             emergency_fund_status = request.form.get('emergency_fund_status', 'none')
             emergency_fund_amount = float(request.form.get('emergency_fund_amount', 0))
 
-            # Investment information
             has_investments = request.form.get('has_investments') == 'on'
             investment_amount = float(request.form.get('investment_amount', 0)) if has_investments else 0
             monthly_investment = float(request.form.get('monthly_investment', 0)) if has_investments else 0
@@ -651,74 +689,126 @@ def planning():
             current_age = int(request.form.get('current_age', 30))
             retirement_age = int(request.form.get('retirement_age', 65))
 
-            # Lifestyle
             lifestyle_budget = float(request.form.get('lifestyle_budget', 0))
-
-            # Priorities and dreams
             priorities = request.form.get('priorities', '')
             dreams = request.form.get('dreams', '')
+            plan_name = (request.form.get('plan_name') or '').strip() or f'Planejamento {datetime.now().strftime("%d/%m/%Y")}'
+            plan_observation = request.form.get('plan_observation', '').strip()
+            plan_date = _parse_plan_date(request.form.get('plan_date'))
+            save_as_favorite = request.form.get('save_as_favorite') == 'on'
+            add_mandatory_bills = request.form.get('add_mandatory_bills') == 'on'
 
-            # Calculate financial distribution
             total_income = monthly_income + other_income
 
-            # Calculate distribution based on profile
             if urgent_debt or total_debt > 0:
-                # Prioritize debt payment
                 security_percentage = 5.0
                 fixed_expenses_percentage = 40.0
                 personal_investment_percentage = 5.0
                 travel_percentage = 5.0
-                big_goals_percentage = 45.0  # Debt payment
+                big_goals_percentage = 45.0
             elif emergency_fund_status in ['none', 'less_1_month']:
-                # Prioritize emergency fund
                 security_percentage = 25.0
                 fixed_expenses_percentage = 50.0
                 personal_investment_percentage = 10.0
                 travel_percentage = 5.0
                 big_goals_percentage = 10.0
             else:
-                # Balanced distribution
                 security_percentage = 15.0
                 fixed_expenses_percentage = 50.0
                 personal_investment_percentage = 15.0
                 travel_percentage = 10.0
                 big_goals_percentage = 10.0
 
-            # Create or update planning
-            planning = FinancialPlanning.query.filter_by(user_id=current_user.id).first()
-            if not planning:
-                planning = FinancialPlanning(user_id=current_user.id)
+            if save_as_favorite:
+                FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
 
-            planning.monthly_income = total_income
-            planning.income_type = income_type
-            planning.other_income = other_income
-            planning.dependents = dependents
-            planning.shares_expenses = shares_expenses
-            planning.has_debts = has_debts
-            planning.total_debt = total_debt
-            planning.monthly_debt_payment = monthly_debt_payment
-            planning.urgent_debt = urgent_debt
-            planning.emergency_fund_status = emergency_fund_status
-            planning.emergency_fund_amount = emergency_fund_amount
-            planning.has_investments = has_investments
-            planning.investment_amount = investment_amount
-            planning.monthly_investment = monthly_investment
-            planning.has_retirement = has_retirement
-            planning.current_age = current_age
-            planning.retirement_age = retirement_age
-            planning.lifestyle_budget = lifestyle_budget
-            planning.priorities = priorities
-            planning.dreams = dreams
-            planning.security_percentage = security_percentage
-            planning.fixed_expenses_percentage = fixed_expenses_percentage
-            planning.personal_investment_percentage = personal_investment_percentage
-            planning.travel_percentage = travel_percentage
-            planning.big_goals_percentage = big_goals_percentage
+            planning = FinancialPlanning(
+                user_id=current_user.id,
+                name=plan_name,
+                observation=plan_observation,
+                plan_date=plan_date,
+                is_favorite=save_as_favorite,
+                monthly_income=total_income,
+                income_type=income_type,
+                other_income=other_income,
+                dependents=dependents,
+                shares_expenses=shares_expenses,
+                has_debts=has_debts,
+                total_debt=total_debt,
+                monthly_debt_payment=monthly_debt_payment,
+                urgent_debt=urgent_debt,
+                emergency_fund_status=emergency_fund_status,
+                emergency_fund_amount=emergency_fund_amount,
+                has_investments=has_investments,
+                investment_amount=investment_amount,
+                monthly_investment=monthly_investment,
+                has_retirement=has_retirement,
+                current_age=current_age,
+                retirement_age=retirement_age,
+                lifestyle_budget=lifestyle_budget,
+                priorities=priorities,
+                dreams=dreams,
+                security_percentage=security_percentage,
+                fixed_expenses_percentage=fixed_expenses_percentage,
+                personal_investment_percentage=personal_investment_percentage,
+                travel_percentage=travel_percentage,
+                big_goals_percentage=big_goals_percentage,
+            )
 
             db.session.add(planning)
             db.session.commit()
 
-            flash('Planejamento financeiro criado com sucesso!', 'success')
+            # Create mandatory bills if requested
+            if add_mandatory_bills:
+                try:
+                    from app import MandatoryBill, Category
+                    default_category = Category.query.filter_by(user_id=current_user.id, name='Contas Obrigatórias').first()
+                    if not default_category:
+                        default_category = Category(
+                            user_id=current_user.id,
+                            name='Contas Obrigatórias',
+                            icon='bi-receipt',
+                            color='#8b5cf6'
+                        )
+                        db.session.add(default_category)
+                        db.session.commit()
+
+                    # Create bills based on fixed expenses percentage
+                    fixed_expenses_amount = total_income * (fixed_expenses_percentage / 100)
+
+                    # Create a few sample bills
+                    bills_to_create = [
+                        {'name': 'Aluguel/Moradia', 'amount': fixed_expenses_amount * 0.4, 'due_day': 5},
+                        {'name': 'Contas (Água/Luz/Gás)', 'amount': fixed_expenses_amount * 0.2, 'due_day': 10},
+                        {'name': 'Internet/Telefone', 'amount': fixed_expenses_amount * 0.1, 'due_day': 15},
+                        {'name': 'Supermercado', 'amount': fixed_expenses_amount * 0.3, 'due_day': 20},
+                    ]
+
+                    for bill_data in bills_to_create:
+                        existing_bill = MandatoryBill.query.filter_by(
+                            user_id=current_user.id,
+                            name=bill_data['name']
+                        ).first()
+
+                        if not existing_bill:
+                            bill = MandatoryBill(
+                                user_id=current_user.id,
+                                category_id=default_category.id,
+                                name=bill_data['name'],
+                                amount=bill_data['amount'],
+                                due_day=bill_data['due_day']
+                            )
+                            db.session.add(bill)
+
+                    db.session.commit()
+                    flash('Planejamento salvo e contas obrigatórias criadas!', 'success')
+                except Exception as e:
+                    db.session.rollback()
+                    print(f'Erro ao criar contas obrigatórias: {e}')
+                    flash('Planejamento salvo, mas houve erro ao criar contas obrigatórias.', 'warning')
+            else:
+                flash('Planejamento salvo com sucesso!', 'success')
+
             return redirect(url_for('planning'))
 
         except Exception as e:
@@ -726,27 +816,118 @@ def planning():
             flash(f'Erro ao criar planejamento: {str(e)}', 'error')
             return redirect(url_for('planning'))
 
-    # GET request - just get existing planning or show empty form
-    planning = FinancialPlanning.query.filter_by(user_id=current_user.id).first()
+    planning_items = FinancialPlanning.query.filter_by(user_id=current_user.id).order_by(
+        FinancialPlanning.is_favorite.desc(),
+        FinancialPlanning.plan_date.desc(),
+        FinancialPlanning.created_at.desc(),
+        FinancialPlanning.id.desc()
+    ).all()
 
-    # Calculate values for display if planning exists
+    if planning_items and not any(item.is_favorite for item in planning_items):
+        planning_items[0].is_favorite = True
+        db.session.commit()
+        planning_items = FinancialPlanning.query.filter_by(user_id=current_user.id).order_by(
+            FinancialPlanning.is_favorite.desc(),
+            FinancialPlanning.plan_date.desc(),
+            FinancialPlanning.created_at.desc(),
+            FinancialPlanning.id.desc()
+        ).all()
+
+    favorite_plan = planning_items[0] if planning_items else None
+    planning_history = [item for item in planning_items if not item.is_favorite] if planning_items else []
+
     planning_data = None
-    if planning and planning.monthly_income > 0:
+    if favorite_plan and favorite_plan.monthly_income > 0:
         planning_data = {
-            'monthly_income': planning.monthly_income,
-            'security_amount': planning.monthly_income * (planning.security_percentage / 100),
-            'fixed_expenses_amount': planning.monthly_income * (planning.fixed_expenses_percentage / 100),
-            'personal_investment_amount': planning.monthly_income * (planning.personal_investment_percentage / 100),
-            'travel_amount': planning.monthly_income * (planning.travel_percentage / 100),
-            'big_goals_amount': planning.monthly_income * (planning.big_goals_percentage / 100),
-            'security_percentage': planning.security_percentage,
-            'fixed_expenses_percentage': planning.fixed_expenses_percentage,
-            'personal_investment_percentage': planning.personal_investment_percentage,
-            'travel_percentage': planning.travel_percentage,
-            'big_goals_percentage': planning.big_goals_percentage,
+            'monthly_income': favorite_plan.monthly_income,
+            'security_amount': favorite_plan.monthly_income * (favorite_plan.security_percentage / 100),
+            'fixed_expenses_amount': favorite_plan.monthly_income * (favorite_plan.fixed_expenses_percentage / 100),
+            'personal_investment_amount': favorite_plan.monthly_income * (favorite_plan.personal_investment_percentage / 100),
+            'travel_amount': favorite_plan.monthly_income * (favorite_plan.travel_percentage / 100),
+            'big_goals_amount': favorite_plan.monthly_income * (favorite_plan.big_goals_percentage / 100),
+            'security_percentage': favorite_plan.security_percentage,
+            'fixed_expenses_percentage': favorite_plan.fixed_expenses_percentage,
+            'personal_investment_percentage': favorite_plan.personal_investment_percentage,
+            'travel_percentage': favorite_plan.travel_percentage,
+            'big_goals_percentage': favorite_plan.big_goals_percentage,
         }
 
-    return render_template('planning.html', planning=planning, planning_data=planning_data)
+    return render_template(
+        'planning.html',
+        planning=favorite_plan,
+        planning_data=planning_data,
+        favorite_plan=favorite_plan,
+        planning_history=planning_history,
+        all_plans=planning_items,
+        today_date=date.today()
+    )
+
+
+@app.route('/planning/favorite/<int:planning_id>', methods=['POST'])
+@login_required
+def set_favorite_planning(planning_id):
+    try:
+        # Remove favorite from all user's plans
+        FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
+
+        # Set new favorite
+        planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+        if planning:
+            planning.is_favorite = True
+            db.session.commit()
+            flash('Planejamento definido como favorito!', 'success')
+        else:
+            flash('Planejamento não encontrado', 'error')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao definir favorito: {str(e)}', 'error')
+
+    return redirect(url_for('planning'))
+
+
+@app.route('/planning/view/<int:planning_id>')
+@login_required
+def view_planning(planning_id):
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+    if not planning:
+        flash('Planejamento não encontrado', 'error')
+        return redirect(url_for('planning'))
+
+    planning_data = {
+        'monthly_income': planning.monthly_income,
+        'security_amount': planning.monthly_income * (planning.security_percentage / 100),
+        'fixed_expenses_amount': planning.monthly_income * (planning.fixed_expenses_percentage / 100),
+        'personal_investment_amount': planning.monthly_income * (planning.personal_investment_percentage / 100),
+        'travel_amount': planning.monthly_income * (planning.travel_percentage / 100),
+        'big_goals_amount': planning.monthly_income * (planning.big_goals_percentage / 100),
+        'security_percentage': planning.security_percentage,
+        'fixed_expenses_percentage': planning.fixed_expenses_percentage,
+        'personal_investment_percentage': planning.personal_investment_percentage,
+        'travel_percentage': planning.travel_percentage,
+        'big_goals_percentage': planning.big_goals_percentage,
+    }
+
+    return render_template(
+        'planning.html',
+        planning=planning,
+        planning_data=planning_data,
+        favorite_plan=planning,
+        planning_history=[],
+        all_plans=FinancialPlanning.query.filter_by(user_id=current_user.id).all(),
+        today_date=date.today()
+    )
+
+
+@app.route('/planning/new')
+@login_required
+def new_planning():
+    return redirect(url_for('planning'))
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first_or_404()
+    FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
+    planning.is_favorite = True
+    db.session.commit()
+    flash('Planejamento marcado como "Meu planejamento".', 'success')
+    return redirect(url_for('planning'))
 
 
 @app.route('/wishlist', methods=['GET', 'POST'])

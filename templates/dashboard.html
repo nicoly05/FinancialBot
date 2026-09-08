@@ -602,6 +602,78 @@ function goToWishlist() {
     window.location.href = '/wishlist';
 }
 
+// Funções globais para filtros
+function toggleFilter(column) {
+    const filterRow = document.getElementById('filterRow');
+    if (filterRow) {
+        filterRow.style.display = filterRow.style.display === 'none' ? '' : 'none';
+    }
+}
+
+let currentFilters = {
+    date: '',
+    type: '',
+    category: '',
+    global: ''
+};
+
+function filterByColumn(column, value) {
+    currentFilters[column] = value;
+    applyFilters();
+}
+
+function globalFilter(value) {
+    currentFilters.global = value.toLowerCase();
+    applyFilters();
+}
+
+function applyFilters() {
+    const rows = document.querySelectorAll('#transactionsTable tbody tr:not(#filterRow):not(#noResults)');
+
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const dateText = cells[0].textContent.toLowerCase();
+        const type = row.getAttribute('data-type');
+        const category = row.getAttribute('data-category');
+        const rowText = row.textContent.toLowerCase();
+
+        let showRow = true;
+
+        if (currentFilters.date && !dateText.includes(currentFilters.date.toLowerCase())) {
+            showRow = false;
+        }
+
+        if (currentFilters.type && type !== currentFilters.type) {
+            showRow = false;
+        }
+
+        if (currentFilters.category && category !== currentFilters.category) {
+            showRow = false;
+        }
+
+        if (currentFilters.global && !rowText.includes(currentFilters.global)) {
+            showRow = false;
+        }
+
+        row.style.display = showRow ? '' : 'none';
+    });
+
+    // Mostrar mensagem se não houver resultados
+    const visibleRows = Array.from(rows).filter(row => row.style.display !== 'none');
+    const noResults = document.getElementById('noResults');
+    if (noResults) {
+        noResults.remove();
+    }
+
+    if (visibleRows.length === 0) {
+        const tbody = document.querySelector('#transactionsTable tbody');
+        const tr = document.createElement('tr');
+        tr.id = 'noResults';
+        tr.innerHTML = '<td colspan="5" class="text-center text-muted py-4">Nenhuma transação encontrada com os filtros selecionados.</td>';
+        tbody.appendChild(tr);
+    }
+}
+
 (function () {
     // Lê os dados injetados pelo servidor a partir das tags JSON acima.
     // Nenhuma expressão Jinja aparece dentro deste bloco <script> normal.
@@ -1215,76 +1287,6 @@ function goToWishlist() {
             alert('Erro ao comunicar com o servidor');
         });
     });
-
-    // Transaction Filtering
-    let currentFilters = {
-        date: '',
-        type: '',
-        category: '',
-        global: ''
-    };
-
-    function toggleFilter(column) {
-        const filterRow = document.getElementById('filterRow');
-        filterRow.style.display = filterRow.style.display === 'none' ? '' : 'none';
-    }
-
-    function filterByColumn(column, value) {
-        currentFilters[column] = value;
-        applyFilters();
-    }
-
-    function globalFilter(value) {
-        currentFilters.global = value.toLowerCase();
-        applyFilters();
-    }
-
-    function applyFilters() {
-        const rows = document.querySelectorAll('#transactionsTable tbody tr:not(#filterRow):not(#noResults)');
-
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            const dateText = cells[0].textContent.toLowerCase();
-            const type = row.getAttribute('data-type');
-            const category = row.getAttribute('data-category');
-            const rowText = row.textContent.toLowerCase();
-
-            let showRow = true;
-
-            if (currentFilters.date && !dateText.includes(currentFilters.date.toLowerCase())) {
-                showRow = false;
-            }
-
-            if (currentFilters.type && type !== currentFilters.type) {
-                showRow = false;
-            }
-
-            if (currentFilters.category && category !== currentFilters.category) {
-                showRow = false;
-            }
-
-            if (currentFilters.global && !rowText.includes(currentFilters.global)) {
-                showRow = false;
-            }
-
-            row.style.display = showRow ? '' : 'none';
-        });
-
-        // Mostrar mensagem se não houver resultados
-        const visibleRows = Array.from(rows).filter(row => row.style.display !== 'none');
-        const noResults = document.getElementById('noResults');
-        if (noResults) {
-            noResults.remove();
-        }
-
-        if (visibleRows.length === 0) {
-            const tbody = document.querySelector('#transactionsTable tbody');
-            const tr = document.createElement('tr');
-            tr.id = 'noResults';
-            tr.innerHTML = '<td colspan="5" class="text-center text-muted py-4">Nenhuma transação encontrada com os filtros selecionados.</td>';
-            tbody.appendChild(tr);
-        }
-    }
 })();
 </script>
 {% endblock %}

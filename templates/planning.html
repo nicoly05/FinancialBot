@@ -9,6 +9,40 @@
         margin: 0 auto;
     }
 
+    .planning-menu {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .planning-menu-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    }
+
+    .planning-menu-item h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem;
+        color: var(--text-color, #111827);
+    }
+
+    .planning-menu-item p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--text-light, #6b7280);
+        line-height: 1.5;
+    }
+
+    .planning-menu-item.active {
+        border-color: rgba(139, 92, 246, 0.45);
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(236, 72, 153, 0.06));
+    }
+
     .step-indicator {
         display: flex;
         justify-content: space-between;
@@ -230,6 +264,70 @@
     .segment-goals {
         background: linear-gradient(135deg, #ef4444, #dc2626);
     }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1050;
+        overflow-y: auto;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-content-custom {
+        background: white;
+        border-radius: 12px;
+        max-width: 800px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        animation: modalSlideIn 0.3s ease;
+    }
+
+    @keyframes modalSlideIn {
+        from {
+            transform: translateY(-50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .modal-header-custom {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-body-custom {
+        padding: 1.5rem;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6b7280;
+    }
+
+    .modal-close:hover {
+        color: #111827;
+    }
 </style>
 {% endblock %}
 
@@ -238,6 +336,21 @@
     <div class="card p-4">
         <h2 class="mb-4"><i class="bi bi-calculator"></i> Planejamento Financeiro Personalizado</h2>
         <p class="text-muted mb-4">Vamos criar um plano financeiro personalizado para você responder algumas perguntas sobre sua situação financeira e objetivos.</p>
+
+        <div class="planning-menu">
+            <div class="planning-menu-item" onclick="openModal('myPlanningModal')" style="cursor: pointer;">
+                <h3>Meu planejamento</h3>
+                <p>{% if favorite_plan %}{{ favorite_plan.name }}{% else %}Ainda não há planejamento favorito salvo.{% endif %}</p>
+            </div>
+            <div class="planning-menu-item" onclick="openModal('newPlanningModal')" style="cursor: pointer;">
+                <h3>Faça um novo planejamento</h3>
+                <p>Adicione nome, observação e data para registrar um novo plano financeiro.</p>
+            </div>
+            <div class="planning-menu-item" onclick="openModal('historyModal')" style="cursor: pointer;">
+                <h3>Histórico de planejamentos</h3>
+                <p>{% if all_plans %}{{ all_plans|length }} planejamento(s) salvo(s).{% else %}Nenhum planejamento salvo ainda.{% endif %}</p>
+            </div>
+        </div>
 
         <!-- Step Indicator -->
         <div class="step-indicator">
@@ -274,8 +387,8 @@
             </div>
         </div>
 
-        <!-- Step Content -->
         <form id="planningForm" method="POST">
+            <!-- Step Content -->
             <!-- Step 1: Renda -->
             <div class="step-content active" data-step="1">
                 <h4 class="mb-3">💰 Sua Renda</h4>
@@ -495,9 +608,18 @@
             <div class="step-content" data-step="7">
                 <h4 class="mb-3">🎉 Seu Plano Financeiro</h4>
                 <div id="planningResult">
-                    {% if planning_data %}
+                    {% if favorite_plan %}
                     <div class="planning-result">
-                        <h5 class="mb-4">💰 Sua Renda Mensal: €{{ "%.2f"|format(planning_data.monthly_income) }}</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <div>
+                                <h5 class="mb-1">💰 {{ favorite_plan.name }}</h5>
+                                {% if favorite_plan.observation %}
+                                <small class="text-muted">{{ favorite_plan.observation }}</small>
+                                {% endif %}
+                            </div>
+                            <span class="badge bg-success">Meu planejamento</span>
+                        </div>
+                        <h6 class="mb-4">Sua Renda Mensal: €{{ "%.2f"|format(planning_data.monthly_income) }}</h6>
 
                         <h6 class="mb-3">Distribuição Financeira:</h6>
                         <div class="distribution-bar" id="distributionBar">
@@ -626,6 +748,7 @@
                 </div>
             </div>
 
+
             <!-- Navigation Buttons -->
             <div class="d-flex justify-content-between mt-4">
                 <button type="button" class="btn btn-outline-secondary" id="prevBtn" onclick="prevStep()" style="display: none;">
@@ -641,12 +764,349 @@
         </form>
     </div>
 </div>
+
+<!-- My Planning Modal -->
+<div class="modal-overlay" id="myPlanningModal">
+    <div class="modal-content-custom">
+        <div class="modal-header-custom">
+            <h5 class="modal-title">Meu Planejamento</h5>
+            <button class="modal-close" onclick="closeModal('myPlanningModal')">&times;</button>
+        </div>
+        <div class="modal-body-custom">
+            {% if favorite_plan %}
+            <div class="planning-result">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div>
+                        <h5 class="mb-1">💰 {{ favorite_plan.name }}</h5>
+                        {% if favorite_plan.observation %}
+                        <small class="text-muted">{{ favorite_plan.observation }}</small>
+                        {% endif %}
+                    </div>
+                    <span class="badge bg-success">Meu planejamento</span>
+                </div>
+                <h6 class="mb-4">Sua Renda Mensal: €{{ "%.2f"|format(planning_data.monthly_income) }}</h6>
+
+                <h6 class="mb-3">Distribuição Financeira:</h6>
+                <div class="distribution-bar" id="distributionBarModal">
+                    <div class="distribution-segment segment-security" data-width="{{ planning_data.security_percentage }}">
+                        {{ "%.0f"|format(planning_data.security_percentage) }}%
+                    </div>
+                    <div class="distribution-segment segment-fixed" data-width="{{ planning_data.fixed_expenses_percentage }}">
+                        {{ "%.0f"|format(planning_data.fixed_expenses_percentage) }}%
+                    </div>
+                    <div class="distribution-segment segment-personal" data-width="{{ planning_data.personal_investment_percentage }}">
+                        {{ "%.0f"|format(planning_data.personal_investment_percentage) }}%
+                    </div>
+                    <div class="distribution-segment segment-travel" data-width="{{ planning_data.travel_percentage }}">
+                        {{ "%.0f"|format(planning_data.travel_percentage) }}%
+                    </div>
+                    <div class="distribution-segment segment-goals" data-width="{{ planning_data.big_goals_percentage }}">
+                        {{ "%.0f"|format(planning_data.big_goals_percentage) }}%
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-6 mb-3">
+                        <div class="card p-3">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i class="bi bi-shield"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Segurança/Futuro</small>
+                                    <div class="fw-bold">€{{ "%.2f"|format(planning_data.security_amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card p-3">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #8b5cf6, #ec4899); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i class="bi bi-house"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Gastos Fixos</small>
+                                    <div class="fw-bold">€{{ "%.2f"|format(planning_data.fixed_expenses_amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card p-3">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #06b6d4, #0891b2); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i class="bi bi-person"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Investimento Pessoal</small>
+                                    <div class="fw-bold">€{{ "%.2f"|format(planning_data.personal_investment_amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card p-3">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #f59e0b, #d97706); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i class="bi bi-airplane"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Viagens</small>
+                                    <div class="fw-bold">€{{ "%.2f"|format(planning_data.travel_amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card p-3">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle me-3" style="width: 40px; height: 40px; background: linear-gradient(135deg, #ef4444, #dc2626); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i class="bi bi-buildings"></i>
+                                </div>
+                                <div>
+                                    <small class="text-muted">Grandes Objetivos</small>
+                                    <div class="fw-bold">€{{ "%.2f"|format(planning_data.big_goals_amount) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h6 class="mb-3">✅ Seu Checklist Mensal:</h6>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Separar €{{ "%.2f"|format(planning_data.security_amount) }} para segurança/futuro</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Pagar gastos fixos (€{{ "%.2f"|format(planning_data.fixed_expenses_amount) }})</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Separar €{{ "%.2f"|format(planning_data.personal_investment_amount) }} para investimento pessoal</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Separar €{{ "%.2f"|format(planning_data.travel_amount) }} para viagens</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Separar €{{ "%.2f"|format(planning_data.big_goals_amount) }} para grandes objetivos</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Atualizar progresso das metas</span>
+                    </div>
+                    <div class="checklist-item">
+                        <input type="checkbox">
+                        <span>Revisar gastos do mês</span>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Ainda não há planejamento favorito salvo. Crie um novo planejamento para começar.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- New Planning Modal -->
+<div class="modal-overlay" id="newPlanningModal">
+    <div class="modal-content-custom">
+        <div class="modal-header-custom">
+            <h5 class="modal-title">Criar Novo Planejamento</h5>
+            <button class="modal-close" onclick="closeModal('newPlanningModal')">&times;</button>
+        </div>
+        <div class="modal-body-custom">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label">Nome do planejamento</label>
+                    <input type="text" class="form-control" id="newPlanName" placeholder="Ex: Planejamento de setembro">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Data do planejamento</label>
+                    <input type="date" class="form-control" id="newPlanDate" value="{{ today_date.strftime('%Y-%m-%d') if today_date else '' }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observação</label>
+                    <textarea class="form-control" id="newPlanObservation" rows="2" placeholder="Alguma observação importante sobre este planejamento..."></textarea>
+                </div>
+                <div class="col-12">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" id="newPlanFavorite">
+                        Salvar como "Meu planejamento"
+                    </label>
+                </div>
+                <div class="col-12">
+                    <label class="form-check-label">
+                        <input type="checkbox" class="form-check-input" id="addMandatoryBills">
+                        Adicionar checklist nas minhas contas obrigatórias
+                    </label>
+                    <small class="text-muted d-block mt-1">Crie automaticamente contas obrigatórias baseadas neste planejamento</small>
+                </div>
+            </div>
+            <div class="text-center mt-3">
+                <button type="button" class="btn btn-primary" onclick="startNewPlanning()">
+                    <i class="bi bi-plus"></i> Começar Novo Planejamento
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal-overlay" id="historyModal">
+    <div class="modal-content-custom">
+        <div class="modal-header-custom">
+            <h5 class="modal-title">Histórico de Planejamentos</h5>
+            <button class="modal-close" onclick="closeModal('historyModal')">&times;</button>
+        </div>
+        <div class="modal-body-custom">
+            {% if all_plans %}
+            <div class="list-group">
+                {% for item in all_plans %}
+                <div class="list-group-item d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                        <div class="fw-bold">{{ item.name }}</div>
+                        {% if item.observation %}
+                        <small class="text-muted">{{ item.observation }}</small>
+                        {% endif %}
+                        <div class="small text-muted mt-1">{{ item.plan_date.strftime('%d/%m/%Y') if item.plan_date else '' }}</div>
+                        {% if item.is_favorite %}
+                        <span class="badge bg-success mt-1">Meu planejamento</span>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary view-details-btn" data-planning-id="{{ item.id }}">Ver detalhes</button>
+                        {% if not item.is_favorite %}
+                        <form method="POST" action="{{ url_for('set_favorite_planning', planning_id=item.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-success">Definir como favorito</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Ainda não há planejamentos salvos. Crie seu primeiro planejamento!
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let currentStep = 1;
 const totalSteps = 7;
+
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal-overlay')) {
+        e.target.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+});
+
+function viewPlanningDetails(planningId) {
+    closeModal('historyModal');
+    window.location.href = `/planning/view/${planningId}`;
+}
+
+// Add event listeners for view details buttons
+document.addEventListener('DOMContentLoaded', function() {
+    const viewButtons = document.querySelectorAll('.view-details-btn');
+    viewButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const planningId = this.getAttribute('data-planning-id');
+            viewPlanningDetails(planningId);
+        });
+    });
+});
+
+function startNewPlanning() {
+    const planName = document.getElementById('newPlanName').value;
+    const planDate = document.getElementById('newPlanDate').value;
+    const planObservation = document.getElementById('newPlanObservation').value;
+    const saveAsFavorite = document.getElementById('newPlanFavorite').checked;
+    const addMandatoryBills = document.getElementById('addMandatoryBills').checked;
+
+    // Close modal
+    closeModal('newPlanningModal');
+
+    // Add fields to form
+    const form = document.getElementById('planningForm');
+    let nameInput = form.querySelector('input[name="plan_name"]');
+    if (!nameInput) {
+        nameInput = document.createElement('input');
+        nameInput.type = 'hidden';
+        nameInput.name = 'plan_name';
+        form.appendChild(nameInput);
+    }
+    nameInput.value = planName;
+
+    let dateInput = form.querySelector('input[name="plan_date"]');
+    if (!dateInput) {
+        dateInput = document.createElement('input');
+        dateInput.type = 'hidden';
+        dateInput.name = 'plan_date';
+        form.appendChild(dateInput);
+    }
+    dateInput.value = planDate;
+
+    let obsInput = form.querySelector('input[name="plan_observation"]');
+    if (!obsInput) {
+        obsInput = document.createElement('input');
+        obsInput.type = 'hidden';
+        obsInput.name = 'plan_observation';
+        form.appendChild(obsInput);
+    }
+    obsInput.value = planObservation;
+
+    let favInput = form.querySelector('input[name="save_as_favorite"]');
+    if (!favInput) {
+        favInput = document.createElement('input');
+        favInput.type = 'hidden';
+        favInput.name = 'save_as_favorite';
+        form.appendChild(favInput);
+    }
+    favInput.value = saveAsFavorite ? 'on' : '';
+
+    let billsInput = form.querySelector('input[name="add_mandatory_bills"]');
+    if (!billsInput) {
+        billsInput = document.createElement('input');
+        billsInput.type = 'hidden';
+        billsInput.name = 'add_mandatory_bills';
+        form.appendChild(billsInput);
+    }
+    billsInput.value = addMandatoryBills ? 'on' : '';
+
+    // Start at step 1
+    currentStep = 1;
+    showStep(1);
+}
 
 function updateStepIndicator() {
     document.querySelectorAll('.step').forEach(step => {
@@ -816,21 +1276,17 @@ document.getElementById('hasInvestmentsCheck').addEventListener('change', functi
 
 // Set distribution widths dynamically after page load
 document.addEventListener('DOMContentLoaded', function() {
-    const segments = [
-        { id: 'segmentSecurity', dataAttr: 'data-width' },
-        { id: 'segmentFixed', dataAttr: 'data-width' },
-        { id: 'segmentPersonal', dataAttr: 'data-width' },
-        { id: 'segmentTravel', dataAttr: 'data-width' },
-        { id: 'segmentGoals', dataAttr: 'data-width' }
-    ];
-
-    segments.forEach(segment => {
-        const element = document.getElementById(segment.id);
-        if (element) {
-            const width = element.getAttribute(segment.dataAttr);
-            if (width) {
-                element.style.width = width + '%';
-            }
+    const containers = ['distributionBar', 'distributionBarModal'];
+    containers.forEach(containerId => {
+        const container = document.getElementById(containerId);
+        if (container) {
+            const segments = container.querySelectorAll('.distribution-segment');
+            segments.forEach(segment => {
+                const width = segment.getAttribute('data-width');
+                if (width) {
+                    segment.style.width = width + '%';
+                }
+            });
         }
     });
 });
