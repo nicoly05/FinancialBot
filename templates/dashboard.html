@@ -523,7 +523,12 @@
                                     <option value="expense">Gastos</option>
                                 </select>
                             </td>
-                            <td></td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <input type="number" class="form-control form-control-sm" placeholder="Valor mínimo" oninput="filterByAmountRange()">
+                                    <input type="number" class="form-control form-control-sm" placeholder="Valor máximo" oninput="filterByAmountRange()">
+                                </div>
+                            </td>
                             <td>
                                 <select class="form-select form-select-sm" id="categoryFilter" onchange="filterByColumn('category', this.value)">
                                     <option value="">Todas</option>
@@ -614,11 +619,21 @@ let currentFilters = {
     date: '',
     type: '',
     category: '',
+    amountMin: '',
+    amountMax: '',
     global: ''
 };
 
 function filterByColumn(column, value) {
     currentFilters[column] = value;
+    applyFilters();
+}
+
+function filterByAmountRange() {
+    const minInput = document.querySelector('#filterRow input[placeholder="Valor mínimo"]');
+    const maxInput = document.querySelector('#filterRow input[placeholder="Valor máximo"]');
+    currentFilters.amountMin = minInput ? minInput.value : '';
+    currentFilters.amountMax = maxInput ? maxInput.value : '';
     applyFilters();
 }
 
@@ -636,6 +651,8 @@ function applyFilters() {
         const type = row.getAttribute('data-type');
         const category = row.getAttribute('data-category');
         const rowText = row.textContent.toLowerCase();
+        const amountText = cells[2].textContent.replace(/[€+\s]/g, '').replace(',', '.');
+        const amountValue = Number.parseFloat(amountText) || 0;
 
         let showRow = true;
 
@@ -648,6 +665,14 @@ function applyFilters() {
         }
 
         if (currentFilters.category && category !== currentFilters.category) {
+            showRow = false;
+        }
+
+        if (currentFilters.amountMin !== '' && Number(currentFilters.amountMin) > amountValue) {
+            showRow = false;
+        }
+
+        if (currentFilters.amountMax !== '' && Number(currentFilters.amountMax) < amountValue) {
             showRow = false;
         }
 

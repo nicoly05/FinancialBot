@@ -87,6 +87,28 @@ class CategoryManagementTests(unittest.TestCase):
         self.assertIn('Meu planejamento', html)
         self.assertIn('Faça um novo planejamento', html)
         self.assertIn('Histórico de planejamentos', html)
+        self.assertIn('Importar checklist', html)
+
+    def test_dashboard_amount_filter_supports_value_ranges(self):
+        user = User(
+            username='filteruser',
+            password=b'hashed',
+            security_question='question',
+            security_answer=b'answer',
+            categories_configured=False
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        with self.client.session_transaction() as session:
+            session['_user_id'] = str(user.id)
+            session['_fresh'] = True
+
+        response = self.client.get('/dashboard')
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('Valor mínimo', html)
+        self.assertIn('Valor máximo', html)
 
     def test_multiple_planning_sessions_are_kept_for_same_user(self):
         user = User(

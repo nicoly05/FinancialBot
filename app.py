@@ -364,6 +364,75 @@ def _parse_plan_date(raw_value):
             return date.today()
 
 
+def _build_planning_summary(planning):
+    if not planning:
+        return None
+
+    monthly_income = float(planning.monthly_income or 0)
+    return {
+        'monthly_income': monthly_income,
+        'security_amount': monthly_income * (planning.security_percentage / 100),
+        'fixed_expenses_amount': monthly_income * (planning.fixed_expenses_percentage / 100),
+        'personal_investment_amount': monthly_income * (planning.personal_investment_percentage / 100),
+        'travel_amount': monthly_income * (planning.travel_percentage / 100),
+        'big_goals_amount': monthly_income * (planning.big_goals_percentage / 100),
+        'security_percentage': planning.security_percentage,
+        'fixed_expenses_percentage': planning.fixed_expenses_percentage,
+        'personal_investment_percentage': planning.personal_investment_percentage,
+        'travel_percentage': planning.travel_percentage,
+        'big_goals_percentage': planning.big_goals_percentage,
+    }
+
+
+def _import_planning_checklist(planning):
+    if not planning:
+        return False
+
+    try:
+        default_category = Category.query.filter_by(user_id=current_user.id, name='Contas Obrigatórias').first()
+        if not default_category:
+            default_category = Category(
+                user_id=current_user.id,
+                name='Contas Obrigatórias',
+                icon='bi-receipt',
+                color='#8b5cf6'
+            )
+            db.session.add(default_category)
+            db.session.flush()
+
+        planning_summary = _build_planning_summary(planning)
+        fixed_expenses_amount = planning_summary['fixed_expenses_amount'] if planning_summary else 0
+
+        bills_to_create = [
+            {'name': 'Aluguel/Moradia', 'amount': fixed_expenses_amount * 0.4, 'due_day': 5},
+            {'name': 'Contas (Água/Luz/Gás)', 'amount': fixed_expenses_amount * 0.2, 'due_day': 10},
+            {'name': 'Internet/Telefone', 'amount': fixed_expenses_amount * 0.1, 'due_day': 15},
+            {'name': 'Supermercado', 'amount': fixed_expenses_amount * 0.3, 'due_day': 20},
+        ]
+
+        imported = False
+        for bill_data in bills_to_create:
+            existing_bill = MandatoryBill.query.filter_by(user_id=current_user.id, name=bill_data['name']).first()
+            if not existing_bill:
+                bill = MandatoryBill(
+                    user_id=current_user.id,
+                    category_id=default_category.id,
+                    name=bill_data['name'],
+                    amount=bill_data['amount'],
+                    due_day=bill_data['due_day']
+                )
+                db.session.add(bill)
+                imported = True
+
+        if imported:
+            db.session.commit()
+        return imported
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Erro ao importar checklist do planejamento: {exc}')
+        return False
+
+
 def _resolve_category(user_id, category_name, user_categories=None):
     categories = user_categories or _get_user_categories(user_id)
     if not categories:
@@ -836,21 +905,7 @@ def planning():
     favorite_plan = planning_items[0] if planning_items else None
     planning_history = [item for item in planning_items if not item.is_favorite] if planning_items else []
 
-    planning_data = None
-    if favorite_plan and favorite_plan.monthly_income > 0:
-        planning_data = {
-            'monthly_income': favorite_plan.monthly_income,
-            'security_amount': favorite_plan.monthly_income * (favorite_plan.security_percentage / 100),
-            'fixed_expenses_amount': favorite_plan.monthly_income * (favorite_plan.fixed_expenses_percentage / 100),
-            'personal_investment_amount': favorite_plan.monthly_income * (favorite_plan.personal_investment_percentage / 100),
-            'travel_amount': favorite_plan.monthly_income * (favorite_plan.travel_percentage / 100),
-            'big_goals_amount': favorite_plan.monthly_income * (favorite_plan.big_goals_percentage / 100),
-            'security_percentage': favorite_plan.security_percentage,
-            'fixed_expenses_percentage': favorite_plan.fixed_expenses_percentage,
-            'personal_investment_percentage': favorite_plan.personal_investment_percentage,
-            'travel_percentage': favorite_plan.travel_percentage,
-            'big_goals_percentage': favorite_plan.big_goals_percentage,
-        }
+    planning_data = _build_planning_summary(favorite_plan) if favorite_plan else None
 
     return render_template(
         'planning.html',
@@ -893,19 +948,7 @@ def view_planning(planning_id):
         flash('Planejamento não encontrado', 'error')
         return redirect(url_for('planning'))
 
-    planning_data = {
-        'monthly_income': planning.monthly_income,
-        'security_amount': planning.monthly_income * (planning.security_percentage / 100),
-        'fixed_expenses_amount': planning.monthly_income * (planning.fixed_expenses_percentage / 100),
-        'personal_investment_amount': planning.monthly_income * (planning.personal_investment_percentage / 100),
-        'travel_amount': planning.monthly_income * (planning.travel_percentage / 100),
-        'big_goals_amount': planning.monthly_income * (planning.big_goals_percentage / 100),
-        'security_percentage': planning.security_percentage,
-        'fixed_expenses_percentage': planning.fixed_expenses_percentage,
-        'personal_investment_percentage': planning.personal_investment_percentage,
-        'travel_percentage': planning.travel_percentage,
-        'big_goals_percentage': planning.big_goals_percentage,
-    }
+    planning_data = _build_planning_summary(planning)
 
     return render_template(
         'planning.html',
@@ -918,10 +961,130 @@ def view_planning(planning_id):
     )
 
 
+@app.route('/planning/detail/<int:planning_id>')
+@login_required
+def planning_detail(planning_id):
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+    if not planning:
+        return jsonify({'error': 'Planejamento não encontrado'}), 404
+
+    planning_data = _build_planning_summary(planning)
+    return jsonify({
+        'id': planning.id,
+        'name': planning.name,
+        'observation': planning.observation,
+        'plan_date': planning.plan_date.isoformat() if planning.plan_date else None,
+        'is_favorite': planning.is_favorite,
+        'planning_data': planning_data,
+        'checklist': [
+            {'label': 'Separar €%.2f para segurança/futuro' % planning_data['security_amount'], 'completed': False},
+            {'label': 'Pagar gastos fixos (€%.2f)' % planning_data['fixed_expenses_amount'], 'completed': False},
+            {'label': 'Separar €%.2f para investimento pessoal' % planning_data['personal_investment_amount'], 'completed': False},
+            {'label': 'Separar €%.2f para viagens' % planning_data['travel_amount'], 'completed': False},
+            {'label': 'Separar €%.2f para grandes objetivos' % planning_data['big_goals_amount'], 'completed': False},
+            {'label': 'Atualizar progresso das metas', 'completed': False},
+            {'label': 'Revisar gastos do mês', 'completed': False},
+        ],
+    })
+
+
+@app.route('/planning/import-checklist/<int:planning_id>', methods=['POST'])
+@login_required
+def import_planning_checklist(planning_id):
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+    if not planning:
+        return jsonify({'error': 'Planejamento não encontrado'}), 404
+
+    imported = _import_planning_checklist(planning)
+    return jsonify({'success': True, 'imported': imported, 'redirect': url_for('dashboard', imported_from_planning=planning_id)})
+
+
 @app.route('/planning/new')
 @login_required
 def new_planning():
     return redirect(url_for('planning'))
+
+
+@app.route('/planning/detail/<int:planning_id>')
+@login_required
+def planning_detail(planning_id):
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+    if not planning:
+        return jsonify({'error': 'Planejamento não encontrado'}), 404
+
+    planning_data = {
+        'monthly_income': planning.monthly_income,
+        'security_amount': planning.monthly_income * (planning.security_percentage / 100),
+        'fixed_expenses_amount': planning.monthly_income * (planning.fixed_expenses_percentage / 100),
+        'personal_investment_amount': planning.monthly_income * (planning.personal_investment_percentage / 100),
+        'travel_amount': planning.monthly_income * (planning.travel_percentage / 100),
+        'big_goals_amount': planning.monthly_income * (planning.big_goals_percentage / 100),
+        'security_percentage': planning.security_percentage,
+        'fixed_expenses_percentage': planning.fixed_expenses_percentage,
+        'personal_investment_percentage': planning.personal_investment_percentage,
+        'travel_percentage': planning.travel_percentage,
+        'big_goals_percentage': planning.big_goals_percentage,
+        'name': planning.name,
+        'observation': planning.observation,
+        'plan_date': planning.plan_date.strftime('%d/%m/%Y') if planning.plan_date else ''
+    }
+
+    return jsonify(planning_data)
+
+
+@app.route('/planning/import-checklist/<int:planning_id>', methods=['POST'])
+@login_required
+def import_planning_checklist(planning_id):
+    planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first()
+    if not planning:
+        return jsonify({'error': 'Planejamento não encontrado'}), 404
+
+    try:
+        from app import MandatoryBill, Category
+        default_category = Category.query.filter_by(user_id=current_user.id, name='Contas Obrigatórias').first()
+        if not default_category:
+            default_category = Category(
+                user_id=current_user.id,
+                name='Contas Obrigatórias',
+                icon='bi-receipt',
+                color='#8b5cf6'
+            )
+            db.session.add(default_category)
+            db.session.commit()
+
+        fixed_expenses_amount = planning.monthly_income * (planning.fixed_expenses_percentage / 100)
+
+        bills_to_create = [
+            {'name': f'{planning.name} - Aluguel/Moradia', 'amount': fixed_expenses_amount * 0.4, 'due_day': 5},
+            {'name': f'{planning.name} - Contas (Água/Luz/Gás)', 'amount': fixed_expenses_amount * 0.2, 'due_day': 10},
+            {'name': f'{planning.name} - Internet/Telefone', 'amount': fixed_expenses_amount * 0.1, 'due_day': 15},
+            {'name': f'{planning.name} - Supermercado', 'amount': fixed_expenses_amount * 0.3, 'due_day': 20},
+        ]
+
+        for bill_data in bills_to_create:
+            existing_bill = MandatoryBill.query.filter_by(
+                user_id=current_user.id,
+                name=bill_data['name']
+            ).first()
+
+            if not existing_bill:
+                bill = MandatoryBill(
+                    user_id=current_user.id,
+                    category_id=default_category.id,
+                    name=bill_data['name'],
+                    amount=bill_data['amount'],
+                    due_day=bill_data['due_day']
+                )
+                db.session.add(bill)
+
+        db.session.commit()
+        return jsonify({'success': True, 'redirect': url_for('dashboard')})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+
     planning = FinancialPlanning.query.filter_by(id=planning_id, user_id=current_user.id).first_or_404()
     FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
     planning.is_favorite = True
@@ -1006,6 +1169,13 @@ def uploaded_file(filename):
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    import_planning_id = request.args.get('imported_from_planning')
+    if import_planning_id:
+        planning = FinancialPlanning.query.filter_by(id=int(import_planning_id), user_id=current_user.id).first()
+        if planning:
+            _import_planning_checklist(planning)
+            flash('Checklist importado do planejamento com sucesso!', 'success')
+
     user_categories = _get_user_categories(current_user.id)
     transactions = Transaction.query.filter_by(user_id=current_user.id).all()
 
