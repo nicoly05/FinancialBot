@@ -37,8 +37,16 @@
         .navbar-brand {
             font-weight: 700;
             font-size: 1.4rem;
-            letter-spacing: -0.5px;
+            letter-spacing: -0.2px;
             color: white !important;
+        }
+
+        .navbar-brand-logo {
+            width: 42px;
+            height: 42px;
+            object-fit: contain;
+            vertical-align: middle;
+            margin-right: 0.5rem;
         }
 
         .navbar-toggler {
@@ -312,7 +320,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="bi bi-wallet2"></i> FinancialBot
+                <img class="navbar-brand-logo" src="{{ url_for('static', filename='favicon.png') }}" alt=""> FinancialBot
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
