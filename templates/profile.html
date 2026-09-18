@@ -3,6 +3,7 @@
 {% block title %}Perfil - FinancialBot{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
 <style>
     .profile-container {
         max-width: 600px;
@@ -52,6 +53,16 @@
     .photo-upload-btn {
         margin-top: 1rem;
     }
+
+    .crop-container {
+        max-height: 400px;
+        max-width: 100%;
+        overflow: hidden;
+    }
+
+    .crop-image {
+        max-width: 100%;
+    }
 </style>
 {% endblock %}
 
@@ -74,7 +85,7 @@
         <form method="POST" enctype="multipart/form-data">
              <div class="mb-3">
                 <label class="form-label">Carregar foto de perfil</label>
-                <input type="file" class="form-control" name="image_file" accept="image/*">
+                <input type="file" class="form-control" name="image_file" accept="image/*" id="photoInput">
                 <small class="text-muted">Formatos aceitos: JPG, PNG, GIF (máx. 16MB)</small>
             </div>
             
@@ -90,40 +101,105 @@
                 <small class="text-muted">Usado para notificações sobre transações e contas obrigatórias</small>
             </div>
 
-        
-
             <button type="submit" class="btn btn-primary w-100">
                 <i class="bi bi-check"></i> Guardar Alterações
             </button>
         </form>
     </div>
 </div>
+
+<!-- Crop Modal -->
+<div class="modal fade" id="cropModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Recortar Foto de Perfil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="crop-container">
+                    <img id="cropImage" class="crop-image">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="cropButton">Recortar e Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <script>
-function handlePhotoUpload(input) {
-    if (input.files && input.files[0]) {
-        const file = input.files[0];
-        const formData = new FormData();
-        formData.append('image_file', file);
-        formData.append('email', document.querySelector('input[name="email"]').value);
-        formData.append('profile_photo', document.querySelector('input[name="profile_photo"]').value);
+let cropper;
+let originalFile;
 
-        fetch('/profile', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.text())
-        .then(html => {
-            // Se a resposta for sucesso, recarregar a página
-            location.reload();
-        })
-        .catch(error => {
-            console.error('Erro no upload:', error);
-            alert('Erro ao fazer upload da foto. Tente novamente.');
+document.getElementById('photoInput').addEventListener('change', function(e) {
+    if (e.target.files && e.target.files[0]) {
+        originalFile = e.target.files[0];
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            const cropModal = new bootstrap.Modal(document.getElementById('cropModal'));
+            const cropImage = document.getElementById('cropImage');
+            
+            cropImage.src = event.target.result;
+            cropModal.show();
+            
+            // Initialize cropper
+            if (cropper) {
+                cropper.destroy();
+            }
+            
+            cropper = new Cropper(cropImage, {
+                aspectRatio: 1,
+                viewMode: 1,
+                autoCropArea: 0.8,
+                responsive: true,
+                movable: true,
+                zoomable: true,
+                rotatable: true,
+                scalable: true
+            });
+        };
+        
+        reader.readAsDataURL(originalFile);
+    }
+});
+
+document.getElementById('cropButton').addEventListener('click', function() {
+    if (cropper) {
+        // Get cropped canvas
+        const canvas = cropper.getCroppedCanvas({
+            width: 300,
+            height: 300
+        });
+        
+        // Convert to blob
+        canvas.toBlob(function(blob) {
+            const formData = new FormData();
+            formData.append('image_file', blob, 'cropped_photo.jpg');
+            formData.append('email', document.querySelector('input[name="email"]').value);
+            
+            fetch('/profile', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Close modal and reload page
+                const cropModal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
+                cropModal.hide();
+                location.reload();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Erro ao fazer upload da foto');
+            });
         });
     }
-}
+});
 </script>
 {% endblock %}

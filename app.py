@@ -45,6 +45,24 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
 
+
+@app.after_request
+def allow_local_frontend_requests(response):
+    origin = request.headers.get('Origin')
+    allowed_origins = {
+        'http://127.0.0.1:5000',
+        'http://127.0.0.1:5001',
+        'http://localhost:5000',
+        'http://localhost:5001',
+    }
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Vary'] = 'Origin'
+    return response
+
 # Supabase client
 supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
 
@@ -223,10 +241,23 @@ class MandatoryBill(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    due_day = db.Column(db.Integer, nullable=False)  # Dia do mês (1-31)
+    due_day = db.Column(db.Integer, nullable=True)  # Dia do mês (1-31), nullable para contas importadas do planejamento
     last_paid_month = db.Column(db.Integer)  # Mês em que foi pago pela última vez
     last_paid_year = db.Column(db.Integer)  # Ano em que foi pago pela última vez
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class ChecklistHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    bill_id = db.Column(db.Integer, db.ForeignKey('mandatory_bill.id'), nullable=False)
+    completed_at = db.Column(db.DateTime, default=datetime.now)
+    month = db.Column(db.Integer, nullable=False)  # Mês do checklist
+    year = db.Column(db.Integer, nullable=False)  # Ano do checklist
+    
+    # Relationship
+    bill = db.relationship('MandatoryBill', backref='checklist_history')
+
 
 
 class WishListItem(db.Model):
@@ -394,20 +425,28 @@ def _import_planning_checklist(planning):
             default_category = Category(
                 user_id=current_user.id,
                 name='Contas Obrigatórias',
-                icon='bi-receipt',
+                emoji='📁',
                 color='#8b5cf6'
             )
             db.session.add(default_category)
             db.session.flush()
 
         planning_summary = _build_planning_summary(planning)
+        
+        # Importar apenas o checklist mensal do planejamento
+        security_amount = planning_summary['security_amount'] if planning_summary else 0
         fixed_expenses_amount = planning_summary['fixed_expenses_amount'] if planning_summary else 0
+        personal_investment_amount = planning_summary['personal_investment_amount'] if planning_summary else 0
+        travel_amount = planning_summary['travel_amount'] if planning_summary else 0
+        big_goals_amount = planning_summary['big_goals_amount'] if planning_summary else 0
 
+        # Criar contas obrigatórias com descrição igual ao checklist mensal
         bills_to_create = [
-            {'name': 'Aluguel/Moradia', 'amount': fixed_expenses_amount * 0.4, 'due_day': 5},
-            {'name': 'Contas (Água/Luz/Gás)', 'amount': fixed_expenses_amount * 0.2, 'due_day': 10},
-            {'name': 'Internet/Telefone', 'amount': fixed_expenses_amount * 0.1, 'due_day': 15},
-            {'name': 'Supermercado', 'amount': fixed_expenses_amount * 0.3, 'due_day': 20},
+            {'name': f'Separar €{security_amount:.2f} para segurança/futuro', 'amount': security_amount},
+            {'name': f'Pagar gastos fixos (€{fixed_expenses_amount:.2f})', 'amount': fixed_expenses_amount},
+            {'name': f'Separar €{personal_investment_amount:.2f} para investimento pessoal', 'amount': personal_investment_amount},
+            {'name': f'Separar €{travel_amount:.2f} para viagens', 'amount': travel_amount},
+            {'name': f'Separar €{big_goals_amount:.2f} para grandes objetivos', 'amount': big_goals_amount},
         ]
 
         imported = False
@@ -418,8 +457,7 @@ def _import_planning_checklist(planning):
                     user_id=current_user.id,
                     category_id=default_category.id,
                     name=bill_data['name'],
-                    amount=bill_data['amount'],
-                    due_day=bill_data['due_day']
+                    amount=bill_data['amount']
                 )
                 db.session.add(bill)
                 imported = True
@@ -836,7 +874,7 @@ def planning():
                         default_category = Category(
                             user_id=current_user.id,
                             name='Contas Obrigatórias',
-                            icon='bi-receipt',
+                            emoji='📁',
                             color='#8b5cf6'
                         )
                         db.session.add(default_category)
@@ -988,6 +1026,12 @@ def planning_detail(planning_id):
     })
 
 
+@app.route('/planning/new')
+@login_required
+def new_planning():
+    return redirect(url_for('planning'))
+
+
 @app.route('/planning/import-checklist/<int:planning_id>', methods=['POST'])
 @login_required
 def import_planning_checklist(planning_id):
@@ -996,13 +1040,14 @@ def import_planning_checklist(planning_id):
         return jsonify({'error': 'Planejamento não encontrado'}), 404
 
     imported = _import_planning_checklist(planning)
-    return jsonify({'success': True, 'imported': imported, 'redirect': url_for('dashboard', imported_from_planning=planning_id)})
+    if imported:
+        return jsonify({'success': True, 'redirect': url_for('dashboard', imported_from_planning=planning_id)})
+    else:
+        return jsonify({'error': 'Não foi possível importar o checklist'}), 500
 
 
-@app.route('/planning/new')
-@login_required
-def new_planning():
-    return redirect(url_for('planning'))
+
+
 
 
 @app.route('/wishlist', methods=['GET', 'POST'])
@@ -1494,6 +1539,15 @@ def api_update_bill_payment():
         if is_paid:
             bill.last_paid_month = month
             bill.last_paid_year = year
+            
+            # Add to checklist history
+            history = ChecklistHistory(
+                user_id=current_user.id,
+                bill_id=bill.id,
+                month=month,
+                year=year
+            )
+            db.session.add(history)
         else:
             bill.last_paid_month = None
             bill.last_paid_year = None

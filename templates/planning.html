@@ -913,7 +913,7 @@
                     {% if favorite_plan %}
                     <div class="mt-3">
                         <button type="button" class="btn btn-outline-primary btn-sm import-checklist-btn" data-planning-id="{{ favorite_plan.id }}">
-                            <i class="bi bi-download"></i> Importar checklist para Contas Obrigatórias
+                            <i class="bi bi-download"></i> Importar contas pendentes
                         </button>
                     </div>
                     {% endif %}
@@ -958,7 +958,7 @@
                 <div class="col-12">
                     <label class="form-check-label">
                         <input type="checkbox" class="form-check-input" id="addMandatoryBills">
-                        Adicionar checklist nas minhas contas obrigatórias
+                        Adicionar contas pendentes às minhas contas obrigatórias
                     </label>
                     <small class="text-muted d-block mt-1">Crie automaticamente contas obrigatórias baseadas neste planejamento</small>
                 </div>
@@ -1136,8 +1136,15 @@ function viewPlanningDetails(planningId) {
 
 async function importPlanningChecklist(planningId) {
     try {
-        const response = await fetch(`/planning/import-checklist/${planningId}`, { method: 'POST' });
+        const response = await fetch(`/planning/import-checklist/${planningId}`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
         const data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Não foi possível importar as contas pendentes.');
+        }
         if (data.redirect) {
             window.location.href = data.redirect;
         }
