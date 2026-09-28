@@ -156,19 +156,24 @@
         align-items: center;
         padding: 8px 16px;
         border-radius: 25px;
-        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-        color: white;
+        background: #f8fafc;
+        color: var(--text-color, #111827);
         font-weight: 600;
         margin: 0.5rem;
         cursor: pointer;
         transition: all 0.3s ease;
+        border: 2px solid #e5e7eb;
     }
 
     .priority-badge:hover {
         transform: scale(1.05);
+        border-color: var(--primary-color);
     }
 
     .priority-badge.selected {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+        color: white !important;
+        border-color: transparent !important;
         box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
     }
 
@@ -400,7 +405,7 @@
                 <h4 class="mb-3">💰 Sua Renda</h4>
                 <div class="mb-3">
                     <label class="form-label">Qual é sua renda líquida mensal? (€)</label>
-                    <input type="number" class="form-control" name="monthly_income" required min="0" step="0.01" placeholder="Ex: 3000">
+                    <input type="number" class="form-control" name="monthly_income" required min="0" step="0.01" placeholder="">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Sua renda é:</label>
@@ -425,7 +430,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Você possui outras fontes de renda? (€)</label>
-                    <input type="number" class="form-control" name="other_income" min="0" step="0.01" placeholder="Ex: 500">
+                    <input type="number" class="form-control" name="other_income" min="0" step="0.01" placeholder="">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Quantas pessoas dependem financeiramente de você?</label>
@@ -451,11 +456,11 @@
                 <div id="debtDetails" style="display: none;">
                     <div class="mb-3">
                         <label class="form-label">Qual o valor total aproximado das suas dívidas? (€)</label>
-                        <input type="number" class="form-control" name="total_debt" min="0" step="0.01" placeholder="Ex: 5000">
+                        <input type="number" class="form-control" name="total_debt" min="0" step="0.01" placeholder="">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Quanto paga mensalmente em parcelas? (€)</label>
-                        <input type="number" class="form-control" name="monthly_debt_payment" min="0" step="0.01" placeholder="Ex: 300">
+                        <input type="number" class="form-control" name="monthly_debt_payment" min="0" step="0.01" placeholder="">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Possui cartão de crédito parcelado?</label>
@@ -485,32 +490,50 @@
             <div class="step-content" data-step="3">
                 <h4 class="mb-3">🏠 Seus Gastos Fixos</h4>
                 <p class="text-muted mb-3">Adicione seus principais gastos fixos mensais:</p>
+                
                 <div id="expensesContainer">
-                    <div class="expense-item">
+                    <div class="expense-item card p-3 mb-3">
                         <div class="row">
                             <div class="col-md-4 mb-2">
-                                <input type="text" class="form-control" name="expense_name[]" placeholder="Nome (ex: Aluguel)">
+                                <label class="form-label small">Nome do gasto</label>
+                                <input type="text" class="form-control" name="expense_name[]" placeholder="">
                             </div>
                             <div class="col-md-3 mb-2">
-                                <input type="number" class="form-control" name="expense_amount[]" placeholder="Valor (€)" min="0" step="0.01">
+                                <label class="form-label small">Valor (€)</label>
+                                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01">
                             </div>
                             <div class="col-md-3 mb-2">
+                                <label class="form-label small">Categoria</label>
                                 <select class="form-select" name="expense_category[]">
-                                    <option value="housing">Moradia</option>
-                                    <option value="food">Alimentação</option>
-                                    <option value="transport">Transporte</option>
-                                    <option value="utilities">Contas</option>
-                                    <option value="health">Saúde</option>
-                                    <option value="entertainment">Lazer</option>
-                                    <option value="other">Outros</option>
+                                    <option value="">Selecione...</option>
+                                    <option value="moradia">🏠 Moradia</option>
+                                    <option value="alimentacao">🍕 Alimentação</option>
+                                    <option value="transporte">🚗 Transporte</option>
+                                    <option value="contas_domesticas">💡 Contas domésticas</option>
+                                    <option value="saude">🏥 Saúde</option>
+                                    <option value="academia">💪 Academia</option>
+                                    <option value="estudos">📚 Estudos</option>
+                                    <option value="lazer">🎮 Lazer</option>
+                                    <option value="salao">💇 Salão de beleza</option>
+                                    <option value="investimentos">📈 Investimentos</option>
+                                    <option value="pets">🐕 Pets</option>
+                                    <option value="imprevistos">⚠️ Imprevistos</option>
+                                    <option value="assinaturas">📱 Assinaturas digitais</option>
+                                    <option value="filhos">👨‍👩‍👧 Filhos</option>
+                                    <option value="doacoes">❤️ Doações</option>
+                                    <option value="presentes">🎁 Presentes</option>
+                                    <option value="manutencao">🔧 Manutenção da casa</option>
+                                    <option value="seguros">🛡️ Seguros</option>
+                                    <option value="outros">📝 Outros</option>
                                 </select>
                             </div>
-                            <div class="col-md-2 mb-2">
+                            <!-- <div class="col-md-2 mb-2">
+                                <label class="form-label small">Essencial</label>
                                 <label class="form-check-label">
                                     <input type="checkbox" class="form-check-input" name="expense_essential[]">
-                                    Essencial
+                                    Sim
                                 </label>
-                            </div>
+                            </div> -->
                         </div>
                     </div>
                 </div>
@@ -534,7 +557,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Qual valor possui atualmente em reserva? (€)</label>
-                    <input type="number" class="form-control" name="emergency_fund_amount" min="0" step="0.01" placeholder="Ex: 3000">
+                    <input type="number" class="form-control" name="emergency_fund_amount" min="0" step="0.01" placeholder="">
                 </div>
                 <div class="mb-3">
                     <label class="form-check-label">
@@ -545,11 +568,11 @@
                 <div id="investmentDetails" style="display: none;">
                     <div class="mb-3">
                         <label class="form-label">Quanto possui investido? (€)</label>
-                        <input type="number" class="form-control" name="investment_amount" min="0" step="0.01" placeholder="Ex: 10000">
+                        <input type="number" class="form-control" name="investment_amount" min="0" step="0.01" placeholder="">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Quanto investe mensalmente? (€)</label>
-                        <input type="number" class="form-control" name="monthly_investment" min="0" step="0.01" placeholder="Ex: 200">
+                        <input type="number" class="form-control" name="monthly_investment" min="0" step="0.01" placeholder="">
                     </div>
                 </div>
                 <div class="mb-3">
@@ -561,11 +584,11 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Sua idade atual:</label>
-                        <input type="number" class="form-control" name="current_age" min="18" max="100" value="30">
+                        <input type="number" class="form-control" name="current_age" max="120" placeholder="30">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Idade desejada para independência financeira:</label>
-                        <input type="number" class="form-control" name="retirement_age" min="18" max="100" value="65">
+                        <input type="number" class="form-control" name="retirement_age"  max="120" placeholder="65">
                     </div>
                 </div>
             </div>
@@ -589,8 +612,21 @@
                     </div>
                 </div>
                 <div class="mb-3">
+                    <label class="form-label">Adicionar prioridade personalizada:</label>
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" id="customPriority" placeholder="">
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="btn btn-outline-primary" onclick="addCustomPriority()">
+                                <i class="bi bi-plus"></i> Adicionar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
                     <label class="form-label">Quanto dinheiro você gostaria de ter disponível todos os meses para aproveitar sua vida sem culpa? (€)</label>
-                    <input type="number" class="form-control" name="lifestyle_budget" min="0" step="0.01" placeholder="Ex: 300">
+                    <input type="number" class="form-control" name="lifestyle_budget" min="0" step="0.01" placeholder="">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Se você tivesse dinheiro suficiente, quais seriam as 5 coisas que mais gostaria de realizar nos próximos anos?</label>
@@ -601,13 +637,62 @@
             <!-- Step 6: Objetivos Específicos -->
             <div class="step-content" data-step="6">
                 <h4 class="mb-3">🎯 Seus Objetivos Específicos</h4>
-                <p class="text-muted mb-3">Para cada prioridade selecionada, defina os detalhes:</p>
-                <div id="goalsContainer">
-                    <!-- Goals will be added dynamically -->
+                <p class="text-muted mb-3">Selecione a categoria do seu objetivo e defina os detalhes:</p>
+                
+                <div class="mb-3">
+                    <label class="form-label">Categoria do objetivo:</label>
+                    <select class="form-select" id="goalCategory">
+                        <option value="emergency">🛡️ Reserva de emergência</option>
+                        <option value="retirement">👴 Aposentadoria</option>
+                        <option value="investments">📈 Investimentos</option>
+                        <option value="house">🏠 Comprar casa</option>
+                        <option value="car">🚗 Comprar carro</option>
+                        <option value="travel">✈️ Viajar</option>
+                        <option value="education">📚 Cursos/Faculdade</option>
+                        <option value="business">💼 Negócio próprio</option>
+                        <option value="wedding">💒 Casamento</option>
+                        <option value="independence">🚀 Independência financeira</option>
+                        <option value="technology">💻 Tecnologia/Eletrônicos</option>
+                        <option value="health">🏥 Saúde/Tratamentos</option>
+                        <option value="family">👨‍👩‍👧‍👦 Família/Filhos</option>
+                        <option value="hobbies">🎨 Hobbies/Lazer</option>
+                        <option value="home_improvement">🔧 Reformas/Melhorias</option>
+                        <option value="charity">❤️ Doações/Caridade</option>
+                        <option value="emergency_fund">💰 Fundo de emergência</option>
+                        <option value="other">📝 Outros (especificar)</option>
+                    </select>
                 </div>
+                
+                <div class="mb-3" id="customGoalCategoryDiv" style="display: none;">
+                    <label class="form-label">Especifique a categoria:</label>
+                    <input type="text" class="form-control" id="customGoalCategory" placeholder="">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Nome do objetivo:</label>
+                    <input type="text" class="form-control" id="goalName" placeholder="">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Valor necessário (€):</label>
+                    <input type="number" class="form-control" id="goalAmount" min="0" step="0.01" placeholder="">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Prazo (meses):</label>
+                    <input type="number" class="form-control" id="goalDeadline" min="1" placeholder="">
+                </div>
+                
                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="addGoal()">
                     <i class="bi bi-plus"></i> Adicionar Objetivo
                 </button>
+                
+                <div class="mt-4">
+                    <h6 class="mb-2">Objetivos adicionados:</h6>
+                    <div id="goalsContainer">
+                        <p class="text-muted small">Adicione seus objetivos acima.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Step 7: Resultado -->
@@ -743,6 +828,11 @@
                             <div class="checklist-item">
                                 <input type="checkbox">
                                 <span>Revisar gastos do mês</span>
+                            </div>
+                            <div class="mt-3">
+                                <button type="button" class="btn btn-outline-primary btn-sm import-checklist-btn" data-planning-id="{{ favorite_plan.id if favorite_plan else 0 }}">
+                                    <i class="bi bi-download"></i> Importar checklist para Contas Obrigatórias
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -939,7 +1029,7 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
                     <label class="form-label">Nome do planejamento</label>
-                    <input type="text" class="form-control" id="newPlanName" placeholder="Ex: Planejamento de setembro">
+                    <input type="text" class="form-control" id="newPlanName" placeholder="">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Data do planejamento</label>
@@ -954,13 +1044,6 @@
                         <input type="checkbox" class="form-check-input" id="newPlanFavorite">
                         Salvar como "Meu planejamento"
                     </label>
-                </div>
-                <div class="col-12">
-                    <label class="form-check-label">
-                        <input type="checkbox" class="form-check-input" id="addMandatoryBills">
-                        Adicionar contas pendentes às minhas contas obrigatórias
-                    </label>
-                    <small class="text-muted d-block mt-1">Crie automaticamente contas obrigatórias baseadas neste planejamento</small>
                 </div>
             </div>
             <div class="text-center mt-3">
@@ -1101,7 +1184,7 @@ function buildPlanningSummaryMarkup(planning) {
                 `).join('')}
                 <div class="mt-3">
                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="importPlanningChecklist(${planning.id})">
-                        <i class="bi bi-download"></i> Importar checklist
+                        <i class="bi bi-download"></i> Importar checklist para Contas Obrigatórias
                     </button>
                 </div>
             </div>
@@ -1174,9 +1257,19 @@ document.addEventListener('DOMContentLoaded', function() {
     importButtons.forEach(button => {
         button.addEventListener('click', function() {
             const planningId = this.getAttribute('data-planning-id');
-            if (planningId) {
-                importPlanningChecklist(planningId);
+            if (planningId && planningId !== '0') {
+                importPlanningChecklist(parseInt(planningId));
             }
+        });
+    });
+    
+    // Handle priority badge selection
+    const priorityBadges = document.querySelectorAll('.priority-badge');
+    priorityBadges.forEach(badge => {
+        badge.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.classList.toggle('selected');
         });
     });
 });
@@ -1186,7 +1279,6 @@ function startNewPlanning() {
     const planDate = document.getElementById('newPlanDate').value;
     const planObservation = document.getElementById('newPlanObservation').value;
     const saveAsFavorite = document.getElementById('newPlanFavorite').checked;
-    const addMandatoryBills = document.getElementById('addMandatoryBills').checked;
 
     // Close modal
     closeModal('newPlanningModal');
@@ -1231,15 +1323,6 @@ function startNewPlanning() {
         form.appendChild(favInput);
     }
     favInput.value = saveAsFavorite ? 'on' : '';
-
-    let billsInput = form.querySelector('input[name="add_mandatory_bills"]');
-    if (!billsInput) {
-        billsInput = document.createElement('input');
-        billsInput.type = 'hidden';
-        billsInput.name = 'add_mandatory_bills';
-        form.appendChild(billsInput);
-    }
-    billsInput.value = addMandatoryBills ? 'on' : '';
 
     // Start at step 1
     currentStep = 1;
@@ -1290,6 +1373,31 @@ function prevStep() {
 
 function submitForm() {
     const form = document.getElementById('planningForm');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Prevenir cliques múltiplos
+    if (submitBtn.disabled) return;
+    
+    // Mostrar feedback visual
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-spinner"></i> Salvando...';
+    
+    // Capturar prioridades selecionadas
+    const selectedPriorities = [];
+    document.querySelectorAll('.priority-badge.selected').forEach(badge => {
+        selectedPriorities.push(badge.dataset.priority);
+    });
+    
+    // Adicionar prioridades ao formulário
+    let prioritiesInput = form.querySelector('input[name="priorities"]');
+    if (!prioritiesInput) {
+        prioritiesInput = document.createElement('input');
+        prioritiesInput.type = 'hidden';
+        prioritiesInput.name = 'priorities';
+        form.appendChild(prioritiesInput);
+    }
+    prioritiesInput.value = JSON.stringify(selectedPriorities);
+    
     const formData = new FormData(form);
 
     fetch('/planning', {
@@ -1305,6 +1413,22 @@ function submitForm() {
 
         if (planningResult) {
             document.getElementById('planningResult').innerHTML = planningResult.innerHTML;
+            // Mostrar notificação de sucesso
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-success';
+            notification.innerHTML = '<i class="bi bi-check-circle"></i> Planejamento salvo com sucesso!';
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.style.minWidth = '300px';
+            document.body.appendChild(notification);
+            
+            // Remover notificação após 3 segundos e recarregar
+            setTimeout(() => {
+                notification.remove();
+                location.reload();
+            }, 3000);
         } else {
             alert('Plano criado com sucesso! Recarregando a página...');
             location.reload();
@@ -1313,36 +1437,55 @@ function submitForm() {
     .catch(error => {
         console.error('Erro:', error);
         alert('Erro ao criar plano. Tente novamente.');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-check"></i> Criar Plano';
     });
 }
 
 function addExpense() {
     const container = document.getElementById('expensesContainer');
     const expenseItem = document.createElement('div');
-    expenseItem.className = 'expense-item';
+    expenseItem.className = 'expense-item card p-3 mb-3';
     expenseItem.innerHTML = `
         <div class="row">
             <div class="col-md-4 mb-2">
-                <input type="text" class="form-control" name="expense_name[]" placeholder="Nome (ex: Aluguel)">
+                <label class="form-label small">Nome do gasto</label>
+                <input type="text" class="form-control" name="expense_name[]" placeholder="">
             </div>
             <div class="col-md-3 mb-2">
-                <input type="number" class="form-control" name="expense_amount[]" placeholder="Valor (€)" min="0" step="0.01">
+                <label class="form-label small">Valor (€)</label>
+                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01">
             </div>
             <div class="col-md-3 mb-2">
+                <label class="form-label small">Categoria</label>
                 <select class="form-select" name="expense_category[]">
-                    <option value="housing">Moradia</option>
-                    <option value="food">Alimentação</option>
-                    <option value="transport">Transporte</option>
-                    <option value="utilities">Contas</option>
-                    <option value="health">Saúde</option>
-                    <option value="entertainment">Lazer</option>
-                    <option value="other">Outros</option>
+                    <option value="">Selecione...</option>
+                    <option value="moradia">🏠 Moradia</option>
+                    <option value="alimentacao">🍕 Alimentação</option>
+                    <option value="transporte">🚗 Transporte</option>
+                    <option value="contas_domesticas">💡 Contas domésticas</option>
+                    <option value="saude">🏥 Saúde</option>
+                    <option value="academia">💪 Academia</option>
+                    <option value="estudos">📚 Estudos</option>
+                    <option value="lazer">🎮 Lazer</option>
+                    <option value="salao">💇 Salão de beleza</option>
+                    <option value="investimentos">📈 Investimentos</option>
+                    <option value="pets">🐕 Pets</option>
+                    <option value="imprevistos">⚠️ Imprevistos</option>
+                    <option value="assinaturas">📱 Assinaturas digitais</option>
+                    <option value="filhos">👨‍👩‍👧 Filhos</option>
+                    <option value="doacoes">❤️ Doações</option>
+                    <option value="presentes">🎁 Presentes</option>
+                    <option value="manutencao">🔧 Manutenção da casa</option>
+                    <option value="seguros">🛡️ Seguros</option>
+                    <option value="outros">📝 Outros</option>
                 </select>
             </div>
             <div class="col-md-2 mb-2">
+                <label class="form-label small">Essencial</label>
                 <label class="form-check-label">
                     <input type="checkbox" class="form-check-input" name="expense_essential[]">
-                    Essencial
+                    Sim
                 </label>
             </div>
         </div>
@@ -1350,41 +1493,129 @@ function addExpense() {
     container.appendChild(expenseItem);
 }
 
+function addCustomExpenseCategory() {
+    // Esta função foi removida com o novo design
+    alert('Use a opção "Outros" no campo de categoria para gastos personalizados.');
+}
+
+
+
+function addCustomPriority() {
+    const customPriority = document.getElementById('customPriority').value.trim();
+    if (!customPriority) {
+        alert('Por favor, insira um nome para a prioridade.');
+        return;
+    }
+    
+    const container = document.querySelector('.priority-badges');
+    const newBadge = document.createElement('span');
+    newBadge.className = 'priority-badge selected'; // Já começa selecionado
+    newBadge.dataset.priority = customPriority.toLowerCase().replace(/\s+/g, '_');
+    newBadge.textContent = customPriority;
+    container.appendChild(newBadge);
+    
+    // Adicionar event listener ao novo badge
+    newBadge.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.classList.toggle('selected');
+    });
+    
+    document.getElementById('customPriority').value = '';
+}
+
+// Handle goal category change
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'goalCategory') {
+        const customDiv = document.getElementById('customGoalCategoryDiv');
+        if (e.target.value === 'other') {
+            customDiv.style.display = 'block';
+        } else {
+            customDiv.style.display = 'none';
+        }
+    }
+});
+
+let goals = [];
+
 function addGoal() {
+    const category = document.getElementById('goalCategory').value;
+    const customCategory = document.getElementById('customGoalCategory').value;
+    const name = document.getElementById('goalName').value;
+    const amount = document.getElementById('goalAmount').value;
+    const deadline = document.getElementById('goalDeadline').value;
+    
+    if (!name || !amount || !deadline) {
+        alert('Por favor, preencha todos os campos do objetivo.');
+        return;
+    }
+    
+    const goal = {
+        category: category === 'other' ? customCategory : category,
+        name: name,
+        amount: parseFloat(amount),
+        deadline: parseInt(deadline)
+    };
+    
+    goals.push(goal);
+    
     const container = document.getElementById('goalsContainer');
+    if (container.querySelector('p.text-muted')) {
+        container.innerHTML = '';
+    }
+    
     const goalItem = document.createElement('div');
-    goalItem.className = 'goal-card';
+    goalItem.className = 'card p-3 mb-2';
     goalItem.innerHTML = `
-        <div class="row">
-            <div class="col-md-6 mb-2">
-                <label class="form-label">Nome do objetivo</label>
-                <input type="text" class="form-control" name="goal_name[]" placeholder="Ex: Viagem para Paris">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <strong>${goal.name}</strong>
+                <br>
+                <small class="text-muted">Categoria: ${goal.category} | Valor: €${goal.amount.toFixed(2)} | Prazo: ${goal.deadline} meses</small>
             </div>
-            <div class="col-md-6 mb-2">
-                <label class="form-label">Categoria</label>
-                <select class="form-select" name="goal_category[]">
-                    <option value="security">🛡️ Segurança/Futuro</option>
-                    <option value="personal">🌱 Investimento Pessoal</option>
-                    <option value="travel">✈️ Viagens</option>
-                    <option value="big_goals">🏡 Grandes Objetivos</option>
-                </select>
-            </div>
-            <div class="col-md-4 mb-2">
-                <label class="form-label">Valor necessário (€)</label>
-                <input type="number" class="form-control" name="goal_amount[]" min="0" step="0.01" placeholder="Ex: 5000">
-            </div>
-            <div class="col-md-4 mb-2">
-                <label class="form-label">Valor já guardado (€)</label>
-                <input type="number" class="form-control" name="goal_current[]" min="0" step="0.01" placeholder="Ex: 1000">
-            </div>
-            <div class="col-md-4 mb-2">
-                <label class="form-label">Prazo (meses)</label>
-                <input type="number" class="form-control" name="goal_deadline[]" min="1" placeholder="Ex: 12">
-            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeGoal(${goals.length - 1})">
+                <i class="bi bi-trash"></i>
+            </button>
         </div>
     `;
     container.appendChild(goalItem);
+    
+    // Clear inputs
+    document.getElementById('goalName').value = '';
+    document.getElementById('goalAmount').value = '';
+    document.getElementById('goalDeadline').value = '';
+    document.getElementById('customGoalCategory').value = '';
 }
+
+function removeGoal(index) {
+    goals.splice(index, 1);
+    const container = document.getElementById('goalsContainer');
+    container.innerHTML = '';
+    
+    if (goals.length === 0) {
+        container.innerHTML = '<p class="text-muted small">Adicione seus objetivos acima.</p>';
+    } else {
+        goals.forEach((goal, i) => {
+            const goalItem = document.createElement('div');
+            goalItem.className = 'card p-3 mb-2';
+            goalItem.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${goal.name}</strong>
+                        <br>
+                        <small class="text-muted">Categoria: ${goal.category} | Valor: €${goal.amount.toFixed(2)} | Prazo: ${goal.deadline} meses</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeGoal(${i})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            `;
+            container.appendChild(goalItem);
+        });
+    }
+}
+
+
 
 // Event listeners
 document.querySelectorAll('.option-card').forEach(card => {
@@ -1400,7 +1631,7 @@ document.querySelectorAll('.option-card').forEach(card => {
 
 document.querySelectorAll('.priority-badge').forEach(badge => {
     badge.addEventListener('click', function() {
-        this.classList.toggle('selected');
+        this.classList.toggle('priority-badge selected');
     });
 });
 

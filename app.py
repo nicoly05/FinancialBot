@@ -807,24 +807,63 @@ def planning():
 
             total_income = monthly_income + other_income
 
-            if urgent_debt or total_debt > 0:
-                security_percentage = 5.0
-                fixed_expenses_percentage = 40.0
-                personal_investment_percentage = 5.0
-                travel_percentage = 5.0
-                big_goals_percentage = 45.0
-            elif emergency_fund_status in ['none', 'less_1_month']:
-                security_percentage = 25.0
-                fixed_expenses_percentage = 50.0
-                personal_investment_percentage = 10.0
-                travel_percentage = 5.0
-                big_goals_percentage = 10.0
+            # Capturar prioridades selecionadas e objetivos
+            selected_priorities = request.form.getlist('priorities') if 'priorities' in request.form else []
+            goals_data = request.form.getlist('goal_category') if 'goal_category' in request.form else []
+            
+            # Calcular distribuição baseada nas prioridades e objetivos
+            priority_weights = {
+                'emergency': 0.25,    # Reserva de emergência
+                'retirement': 0.20,    # Aposentadoria
+                'investments': 0.15,   # Investimentos
+                'house': 0.10,        # Comprar casa
+                'car': 0.05,          # Comprar carro
+                'travel': 0.05,        # Viajar
+                'education': 0.05,     # Cursos/Faculdade
+                'business': 0.05,      # Negócio próprio
+                'wedding': 0.03,      # Casamento
+                'independence': 0.07   # Independência financeira
+            }
+            
+            # Calcular pesos baseados nas prioridades selecionadas
+            total_priority_weight = sum(priority_weights.get(p, 0) for p in selected_priorities)
+            
+            # Se não tiver prioridades selecionadas, usar lógica padrão
+            if total_priority_weight == 0:
+                if urgent_debt or total_debt > 0:
+                    security_percentage = 5.0
+                    fixed_expenses_percentage = 40.0
+                    personal_investment_percentage = 5.0
+                    travel_percentage = 5.0
+                    big_goals_percentage = 45.0
+                elif emergency_fund_status in ['none', 'less_1_month']:
+                    security_percentage = 25.0
+                    fixed_expenses_percentage = 50.0
+                    personal_investment_percentage = 10.0
+                    travel_percentage = 5.0
+                    big_goals_percentage = 10.0
+                else:
+                    security_percentage = 15.0
+                    fixed_expenses_percentage = 50.0
+                    personal_investment_percentage = 15.0
+                    travel_percentage = 10.0
+                    big_goals_percentage = 10.0
             else:
-                security_percentage = 15.0
-                fixed_expenses_percentage = 50.0
-                personal_investment_percentage = 15.0
-                travel_percentage = 10.0
-                big_goals_percentage = 10.0
+                # Normalizar pesos para 100%
+                weight_scale = 100 / total_priority_weight if total_priority_weight > 0 else 1
+                
+                # Calcular percentuais baseados nas prioridades
+                security_percentage = priority_weights.get('emergency', 0) * weight_scale
+                big_goals_percentage = sum(priority_weights.get(p, 0) for p in selected_priorities if p in ['house', 'car', 'travel', 'education', 'business', 'wedding', 'independence']) * weight_scale
+                personal_investment_percentage = priority_weights.get('investments', 0) * weight_scale
+                travel_percentage = priority_weights.get('travel', 0) * weight_scale
+                fixed_expenses_percentage = 100 - (security_percentage + big_goals_percentage + personal_investment_percentage + travel_percentage)
+                
+                # Ajustar se necessário
+                if fixed_expenses_percentage < 20:
+                    fixed_expenses_percentage = 20
+                    security_percentage = security_percentage * 0.8
+                    big_goals_percentage = big_goals_percentage * 0.8
 
             if save_as_favorite:
                 FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
