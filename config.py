@@ -17,4 +17,5 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     SUPABASE_URL = os.getenv('SUPABASE_URL')
     SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+    OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 

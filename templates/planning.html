@@ -405,7 +405,7 @@
                 <h4 class="mb-3">💰 Sua Renda</h4>
                 <div class="mb-3">
                     <label class="form-label">Qual é sua renda líquida mensal? (€)</label>
-                    <input type="number" class="form-control" name="monthly_income" required min="0" step="0.01" placeholder="">
+                    <input type="number" class="form-control" name="monthly_income" required min="0" step="0.01" placeholder="500" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Sua renda é:</label>
@@ -430,11 +430,11 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Você possui outras fontes de renda? (€)</label>
-                    <input type="number" class="form-control" name="other_income" min="0" step="0.01" placeholder="">
+                    <input type="number" class="form-control" name="other_income" min="0" step="0.01" placeholder="100" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Quantas pessoas dependem financeiramente de você?</label>
-                    <input type="number" class="form-control" name="dependents" min="0" value="0">
+                    <input type="number" class="form-control" name="dependents" min="0" placeholder="0" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                 </div>
                 <div class="mb-3">
                     <label class="form-check-label">
@@ -456,11 +456,11 @@
                 <div id="debtDetails" style="display: none;">
                     <div class="mb-3">
                         <label class="form-label">Qual o valor total aproximado das suas dívidas? (€)</label>
-                        <input type="number" class="form-control" name="total_debt" min="0" step="0.01" placeholder="">
+                        <input type="number" class="form-control" name="total_debt" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Quanto paga mensalmente em parcelas? (€)</label>
-                        <input type="number" class="form-control" name="monthly_debt_payment" min="0" step="0.01" placeholder="">
+                        <input type="number" class="form-control" name="monthly_debt_payment" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Possui cartão de crédito parcelado?</label>
@@ -500,7 +500,7 @@
                             </div>
                             <div class="col-md-3 mb-2">
                                 <label class="form-label small">Valor (€)</label>
-                                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01">
+                                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                             </div>
                             <div class="col-md-3 mb-2">
                                 <label class="form-label small">Categoria</label>
@@ -527,13 +527,6 @@
                                     <option value="outros">📝 Outros</option>
                                 </select>
                             </div>
-                            <!-- <div class="col-md-2 mb-2">
-                                <label class="form-label small">Essencial</label>
-                                <label class="form-check-label">
-                                    <input type="checkbox" class="form-check-input" name="expense_essential[]">
-                                    Sim
-                                </label>
-                            </div> -->
                         </div>
                     </div>
                 </div>
@@ -557,7 +550,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Qual valor possui atualmente em reserva? (€)</label>
-                    <input type="number" class="form-control" name="emergency_fund_amount" min="0" step="0.01" placeholder="">
+                    <input type="number" class="form-control" name="emergency_fund_amount" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                 </div>
                 <div class="mb-3">
                     <label class="form-check-label">
@@ -568,11 +561,11 @@
                 <div id="investmentDetails" style="display: none;">
                     <div class="mb-3">
                         <label class="form-label">Quanto possui investido? (€)</label>
-                        <input type="number" class="form-control" name="investment_amount" min="0" step="0.01" placeholder="">
+                        <input type="number" class="form-control" name="investment_amount" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Quanto investe mensalmente? (€)</label>
-                        <input type="number" class="form-control" name="monthly_investment" min="0" step="0.01" placeholder="">
+                        <input type="number" class="form-control" name="monthly_investment" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                     </div>
                 </div>
                 <div class="mb-3">
@@ -584,11 +577,11 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Sua idade atual:</label>
-                        <input type="number" class="form-control" name="current_age" max="120" placeholder="30">
+                        <input type="number" class="form-control" name="current_age" max="120" placeholder="30" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Idade desejada para independência financeira:</label>
-                        <input type="number" class="form-control" name="retirement_age"  max="120" placeholder="65">
+                        <input type="number" class="form-control" name="retirement_age"  max="120" placeholder="65" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                     </div>
                 </div>
             </div>
@@ -626,7 +619,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Quanto dinheiro você gostaria de ter disponível todos os meses para aproveitar sua vida sem culpa? (€)</label>
-                    <input type="number" class="form-control" name="lifestyle_budget" min="0" step="0.01" placeholder="">
+                    <input type="number" class="form-control" name="lifestyle_budget" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Se você tivesse dinheiro suficiente, quais seriam as 5 coisas que mais gostaria de realizar nos próximos anos?</label>
@@ -642,6 +635,7 @@
                 <div class="mb-3">
                     <label class="form-label">Categoria do objetivo:</label>
                     <select class="form-select" id="goalCategory">
+                        <option value="" selected>Selecione...</option>
                         <option value="emergency">🛡️ Reserva de emergência</option>
                         <option value="retirement">👴 Aposentadoria</option>
                         <option value="investments">📈 Investimentos</option>
@@ -675,12 +669,12 @@
                 
                 <div class="mb-3">
                     <label class="form-label">Valor necessário (€):</label>
-                    <input type="number" class="form-control" id="goalAmount" min="0" step="0.01" placeholder="">
+                    <input type="number" class="form-control" id="goalAmount" min="0" step="0.01" placeholder="" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
                 </div>
                 
                 <div class="mb-3">
                     <label class="form-label">Prazo (meses):</label>
-                    <input type="number" class="form-control" id="goalDeadline" min="1" placeholder="">
+                    <input type="number" class="form-control" id="goalDeadline" min="1" placeholder="" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
                 </div>
                 
                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="addGoal()">
@@ -712,7 +706,25 @@
                         </div>
                         <h6 class="mb-4">Sua Renda Mensal: €{{ "%.2f"|format(planning_data.monthly_income) }}</h6>
 
-                        <h6 class="mb-3">Distribuição Financeira:</h6>
+                        {% if planning_data.ai_summary %}
+                        <div class="alert alert-info mb-4">
+                            <h6 class="mb-2">🤖 Resumo Inteligente do Seu Planejamento</h6>
+                            <div class="small">{{ planning_data.ai_summary|safe }}</div>
+                        </div>
+                        {% endif %}
+
+                        {% if planning_data.selected_priorities %}
+                        <div class="alert alert-primary mb-4">
+                            <h6 class="mb-2">🎯 Suas Prioridades Selecionadas</h6>
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for priority in planning_data.selected_priorities %}
+                                <span class="badge bg-secondary">{{ priority }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <h6 class="mb-3">Distribuição Financeira Personalizada:</h6>
                         <div class="distribution-bar" id="distributionBar">
                             <div class="distribution-segment segment-security" id="segmentSecurity" data-width="{{ planning_data.security_percentage }}">
                                 {{ "%.0f"|format(planning_data.security_percentage) }}%
@@ -800,7 +812,48 @@
                         </div>
 
                         <div class="mt-4">
-                            <h6 class="mb-3">✅ Seu Checklist Mensal:</h6>
+                            <h6 class="mb-3">✅ Seu Checklist Mensal Personalizado:</h6>
+                            
+                            {% if planning_data.selected_priorities %}
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.security_amount) }} para segurança/futuro</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Pagar gastos fixos (€{{ "%.2f"|format(planning_data.fixed_expenses_amount) }})</span>
+                            </div>
+                            
+                            {% if 'investments' in planning_data.selected_priorities or 'retirement' in planning_data.selected_priorities %}
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.personal_investment_amount) }} para investimento pessoal</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if 'travel' in planning_data.selected_priorities %}
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.travel_amount) }} para viagens</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if planning_data.selected_priorities|length > 2 %}
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Separar €{{ "%.2f"|format(planning_data.big_goals_amount) }} para {{ planning_data.selected_priorities|join(', ') }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Atualizar progresso das metas</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox">
+                                <span>Revisar gastos do mês</span>
+                            </div>
+                            {% else %}
                             <div class="checklist-item">
                                 <input type="checkbox">
                                 <span>Separar €{{ "%.2f"|format(planning_data.security_amount) }} para segurança/futuro</span>
@@ -829,6 +882,8 @@
                                 <input type="checkbox">
                                 <span>Revisar gastos do mês</span>
                             </div>
+                            {% endif %}
+                            
                             <div class="mt-3">
                                 <button type="button" class="btn btn-outline-primary btn-sm import-checklist-btn" data-planning-id="{{ favorite_plan.id if favorite_plan else 0 }}">
                                     <i class="bi bi-download"></i> Importar checklist para Contas Obrigatórias
@@ -1029,7 +1084,7 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
                     <label class="form-label">Nome do planejamento</label>
-                    <input type="text" class="form-control" id="newPlanName" placeholder="">
+                    <input required type="text" class="form-control" id="newPlanName" placeholder="">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Data do planejamento</label>
@@ -1269,7 +1324,7 @@ document.addEventListener('DOMContentLoaded', function() {
         badge.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            this.classList.toggle('selected');
+            this.classList.toggle('priority-badge selected');
         });
     });
 });
@@ -1375,6 +1430,12 @@ function submitForm() {
     const form = document.getElementById('planningForm');
     const submitBtn = document.getElementById('submitBtn');
     
+    // Validar campos required
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
     // Prevenir cliques múltiplos
     if (submitBtn.disabled) return;
     
@@ -1388,12 +1449,12 @@ function submitForm() {
         selectedPriorities.push(badge.dataset.priority);
     });
     
-    // Adicionar prioridades ao formulário
-    let prioritiesInput = form.querySelector('input[name="priorities"]');
+    // Adicionar prioridades ao formulário como JSON
+    let prioritiesInput = form.querySelector('input[name="priorities_json"]');
     if (!prioritiesInput) {
         prioritiesInput = document.createElement('input');
         prioritiesInput.type = 'hidden';
-        prioritiesInput.name = 'priorities';
+        prioritiesInput.name = 'priorities_json';
         form.appendChild(prioritiesInput);
     }
     prioritiesInput.value = JSON.stringify(selectedPriorities);
@@ -1454,7 +1515,7 @@ function addExpense() {
             </div>
             <div class="col-md-3 mb-2">
                 <label class="form-label small">Valor (€)</label>
-                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01">
+                <input type="number" class="form-control" name="expense_amount[]" placeholder="" min="0" step="0.01" oninput="this.value = this.value.replace(/[^0-9.]/g, '')">
             </div>
             <div class="col-md-3 mb-2">
                 <label class="form-label small">Categoria</label>
@@ -1480,14 +1541,6 @@ function addExpense() {
                     <option value="seguros">🛡️ Seguros</option>
                     <option value="outros">📝 Outros</option>
                 </select>
-            </div>
-            <div class="col-md-2 mb-2">
-                <label class="form-label small">Essencial</label>
-                <label class="form-check-label">
-                    <input type="checkbox" class="form-check-input" name="expense_essential[]">
-                    Sim
-                </label>
-            </div>
         </div>
     `;
     container.appendChild(expenseItem);
@@ -1585,6 +1638,7 @@ function addGoal() {
     document.getElementById('goalAmount').value = '';
     document.getElementById('goalDeadline').value = '';
     document.getElementById('customGoalCategory').value = '';
+    document.getElementById('goalCategory').value = ''; // Reset to default
 }
 
 function removeGoal(index) {
@@ -1631,7 +1685,7 @@ document.querySelectorAll('.option-card').forEach(card => {
 
 document.querySelectorAll('.priority-badge').forEach(badge => {
     badge.addEventListener('click', function() {
-        this.classList.toggle('priority-badge selected');
+        this.classList.toggle('selected');
     });
 });
 

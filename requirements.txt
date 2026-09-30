@@ -7,3 +7,4 @@ python-dotenv==1.0.0
 requests==2.31.0
 psycopg[binary]==3.2.3
 supabase==2.31.0
+openai==3.20.0

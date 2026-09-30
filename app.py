@@ -400,6 +400,34 @@ def _build_planning_summary(planning):
         return None
 
     monthly_income = float(planning.monthly_income or 0)
+    
+    # Generate AI summary
+    ai_summary = _generate_ai_summary(planning)
+    
+    # Parse priorities for display
+    selected_priorities = []
+    if planning.priorities:
+        try:
+            selected_priorities = json.loads(planning.priorities)
+        except:
+            pass
+    
+    # Build category list based on priorities
+    priority_display_names = {
+        'emergency': '🛡️ Reserva de Emergência',
+        'retirement': '👴 Aposentadoria',
+        'investments': '📈 Investimentos',
+        'house': '🏠 Comprar Casa',
+        'car': '🚗 Comprar Carro',
+        'travel': '✈️ Viagens',
+        'education': '📚 Cursos/Faculdade',
+        'business': '💼 Negócio Próprio',
+        'wedding': '💒 Casamento',
+        'independence': '🚀 Independência Financeira'
+    }
+    
+    display_categories = [priority_display_names.get(p, p) for p in selected_priorities]
+    
     return {
         'monthly_income': monthly_income,
         'security_amount': monthly_income * (planning.security_percentage / 100),
@@ -412,6 +440,9 @@ def _build_planning_summary(planning):
         'personal_investment_percentage': planning.personal_investment_percentage,
         'travel_percentage': planning.travel_percentage,
         'big_goals_percentage': planning.big_goals_percentage,
+        'ai_summary': ai_summary,
+        'selected_priorities': display_categories,
+        'priorities_count': len(selected_priorities)
     }
 
 
@@ -469,6 +500,220 @@ def _import_planning_checklist(planning):
         db.session.rollback()
         print(f'Erro ao importar checklist do planejamento: {exc}')
         return False
+
+
+def _create_categories_from_priorities(user_id, selected_priorities, goals_data, total_income):
+    """Create categories based on selected priorities and goals"""
+    try:
+        import json
+        priorities_list = json.loads(selected_priorities) if selected_priorities else []
+        
+        # Mapping of priorities to category names
+        priority_categories = {
+            'emergency': 'Reserva de Emergência',
+            'retirement': 'Aposentadoria',
+            'investments': 'Investimentos',
+            'house': 'Compra de Casa',
+            'car': 'Compra de Carro',
+            'travel': 'Viagens',
+            'education': 'Cursos/Faculdade',
+            'business': 'Negócio Próprio',
+            'wedding': 'Casamento',
+            'independence': 'Independência Financeira'
+        }
+        
+        created_categories = []
+        
+        # Create categories for selected priorities
+        for priority in priorities_list:
+            if priority in priority_categories:
+                existing_cat = Category.query.filter_by(
+                    user_id=user_id,
+                    name=priority_categories[priority]
+                ).first()
+                
+                if not existing_cat:
+                    # Use emojis based on priority
+                    emoji_map = {
+                        'emergency': '🛡️',
+                        'retirement': '👴',
+                        'investments': '📈',
+                        'house': '🏠',
+                        'car': '🚗',
+                        'travel': '✈️',
+                        'education': '📚',
+                        'business': '💼',
+                        'wedding': '💒',
+                        'independence': '🚀'
+                    }
+                    
+                    new_category = Category(
+                        user_id=user_id,
+                        name=priority_categories[priority],
+                        emoji=emoji_map.get(priority, '📊'),
+                        color='#8b5cf6'
+                    )
+                    db.session.add(new_category)
+                    created_categories.append(new_category)
+        
+        # Create categories for goals if they don't exist
+        goal_categories = {
+            'technology': 'Tecnologia/Eletrônicos',
+            'health': 'Saúde/Tratamentos',
+            'family': 'Família/Filhos',
+            'hobbies': 'Hobbies/Lazer',
+            'home_improvement': 'Reformas/Melhorias',
+            'charity': 'Doações/Caridade',
+            'emergency_fund': 'Fundo de Emergência'
+        }
+        
+        if goals_data:
+            for goal in goals_data:
+                if goal in goal_categories:
+                    existing_cat = Category.query.filter_by(
+                        user_id=user_id,
+                        name=goal_categories[goal]
+                    ).first()
+                    
+                    if not existing_cat:
+                        emoji_map = {
+                            'technology': '💻',
+                            'health': '🏥',
+                            'family': '👨‍👩‍👧‍👦',
+                            'hobbies': '🎨',
+                            'home_improvement': '🔧',
+                            'charity': '❤️',
+                            'emergency_fund': '💰'
+                        }
+                        
+                        new_category = Category(
+                            user_id=user_id,
+                            name=goal_categories[goal],
+                            emoji=emoji_map.get(goal, '📊'),
+                            color='#8b5cf6'
+                        )
+                        db.session.add(new_category)
+                        created_categories.append(new_category)
+        
+        if created_categories:
+            db.session.commit()
+            print(f'Criadas {len(created_categories)} categorias baseadas nas prioridades: {[c.name for c in created_categories]}')
+        
+    except Exception as exc:
+        db.session.rollback()
+        print(f'Erro ao criar categorias das prioridades: {exc}')
+
+
+def _generate_ai_summary(planning):
+    """Generate AI-powered summary of the financial planning using OpenRouter"""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key or api_key == 'your_openrouter_api_key_here':
+            return None
+        
+        import openai
+        client = openai.OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key
+        )
+        
+        # Build the prompt with planning data
+        summary_data = {
+            'nome': planning.name,
+            'renda_mensal': planning.monthly_income,
+            'renda_tipo': planning.income_type,
+            'outras_rendas': planning.other_income,
+            'dependentes': planning.dependents,
+            'tem_dividas': planning.has_debts,
+            'divida_total': planning.total_debt,
+            'pagamento_mensal_divida': planning.monthly_debt_payment,
+            'status_reserva_emergencia': planning.emergency_fund_status,
+            'valor_reserva_emergencia': planning.emergency_fund_amount,
+            'tem_investimentos': planning.has_investments,
+            'valor_investimentos': planning.investment_amount,
+            'investimento_mensal': planning.monthly_investment,
+            'tem_aposentadoria': planning.has_retirement,
+            'idade_atual': planning.current_age,
+            'idade_aposentadoria': planning.retirement_age,
+            'orçamento_lifestyle': planning.lifestyle_budget,
+            'distribuicao': {
+                'segurança': planning.security_percentage,
+                'gastos_fixos': planning.fixed_expenses_percentage,
+                'investimento_pessoal': planning.personal_investment_percentage,
+                'viagens': planning.travel_percentage,
+                'grandes_objetivos': planning.big_goals_percentage
+            }
+        }
+        
+        # Parse priorities if available
+        if planning.priorities:
+            try:
+                priorities = json.loads(planning.priorities)
+                summary_data['prioridades'] = priorities
+            except:
+                pass
+        
+        prompt = f"""
+Baseado no seguinte planejamento financeiro, crie um resumo personalizado e explicativo em português:
+
+{json.dumps(summary_data, indent=2, ensure_ascii=False)}
+
+O resumo deve:
+1. Resumir os principais pontos do planejamento
+2. Explicar o porquê de cada porcentagem de distribuição escolhida
+3. Destacar as prioridades selecionadas pelo usuário
+4. Explicar como o checklist mensal ajudará a alcançar os objetivos
+5. Ser motivador e personalizado
+
+Responda apenas com o texto do resumo, sem formatação adicional.
+"""
+        
+        # Try using OpenRouter's auto model selection
+        try:
+            response = client.chat.completions.create(
+                model="openrouter/free",
+                messages=[
+                    {"role": "system", "content": "Você é um consultor financeiro especializado em planejamento pessoal."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1000,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as auto_error:
+            print(f'Erro com modelo auto: {auto_error}')
+            
+            # Fallback to specific models
+            models_to_try = [
+                "meta-llama/llama-3-8b-instruct:free",
+                "meta-llama/llama-3-70b-instruct:free",
+                "mistralai/mistral-7b-instruct:free"
+            ]
+            
+            for model in models_to_try:
+                try:
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": "Você é um consultor financeiro especializado em planejamento pessoal."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=1000,
+                        temperature=0.7
+                    )
+                    return response.choices[0].message.content
+                except Exception as model_error:
+                    print(f'Erro com modelo {model}: {model_error}')
+                    continue
+        
+        return None
+        
+    except Exception as exc:
+        print(f'Erro ao gerar resumo com IA: {exc}')
+        return None
 
 
 def _resolve_category(user_id, category_name, user_categories=None):
@@ -808,7 +1053,15 @@ def planning():
             total_income = monthly_income + other_income
 
             # Capturar prioridades selecionadas e objetivos
-            selected_priorities = request.form.getlist('priorities') if 'priorities' in request.form else []
+            try:
+                priorities_json = request.form.get('priorities_json', '')
+                if priorities_json:
+                    selected_priorities = json.loads(priorities_json)
+                else:
+                    selected_priorities = []
+            except:
+                selected_priorities = []
+            
             goals_data = request.form.getlist('goal_category') if 'goal_category' in request.form else []
             
             # Calcular distribuição baseada nas prioridades e objetivos
@@ -864,6 +1117,19 @@ def planning():
                     fixed_expenses_percentage = 20
                     security_percentage = security_percentage * 0.8
                     big_goals_percentage = big_goals_percentage * 0.8
+
+            # Criar categorias baseadas nas prioridades e objetivos
+            try:
+                priorities_json = request.form.get('priorities_json', '')
+                if priorities_json:
+                    selected_priorities = json.loads(priorities_json)
+                else:
+                    selected_priorities = []
+            except:
+                selected_priorities = []
+            
+            goals_data = request.form.getlist('goal_category') if 'goal_category' in request.form else []
+            _create_categories_from_priorities(current_user.id, selected_priorities, goals_data, total_income)
 
             if save_as_favorite:
                 FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
