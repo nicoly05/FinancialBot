@@ -2,152 +2,69 @@
 
 {% block title %}Chat - FinancialBot{% endblock %}
 
-{% block extra_css %}
-<style>
-    .chat-container {
-        height: calc(100vh - 250px);
-        min-height: 400px;
-        overflow-y: auto;
-        border-radius: 12px;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-    }
-    
-    .chat-message {
-        padding: 12px 16px;
-        margin: 8px;
-        border-radius: 12px;
-        max-width: 80%;
-        animation: fadeIn 0.3s ease;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .chat-message.user {
-        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-        color: white;
-        margin-left: auto;
-    }
-    
-    .chat-message.bot {
-        background: #f1f5f9;
-        color: var(--text-dark);
-    }
-    
-    .chat-input-container {
-        position: sticky;
-        bottom: 0;
-        background: white;
-        padding: 16px;
-        border-top: 1px solid #e2e8f0;
-    }
-    
-    .chat-input {
-        border-radius: 24px;
-        padding: 12px 20px;
-        border: 2px solid #e2e8f0;
-    }
-    
-    .chat-input:focus {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-    
-    .send-btn {
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .typing-indicator {
-        display: none;
-        padding: 12px 16px;
-        margin: 8px;
-        background: #f1f5f9;
-        border-radius: 12px;
-        max-width: 80px;
-    }
-    
-    .typing-indicator span {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        margin: 0 2px;
-        animation: typing 1.4s infinite;
-    }
-    
-    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-    
-    @keyframes typing {
-        0%, 60%, 100% { transform: translateY(0); }
-        30% { transform: translateY(-10px); }
-    }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-white">
-                <h4 class="mb-0"><i class="bi bi-chat-dots"></i> Chat Financeiro</h4>
-                <p class="text-muted mb-0">Configura as tuas categorias e gerencia os valores</p>
+<div class="chat-shell">
+    <div class="card chat-stage">
+        <div class="chat-hero">
+            <div>
+                <h4 class="mb-1">Chat financeiro</h4>
+                <p class="text-muted mb-0">Fale naturalmente. Eu confirmo e lanço no seu extrato.</p>
             </div>
-            
-            <div class="card-body p-0">
-                <div class="chat-container" id="chatContainer">
-                    {% if not chat_history %}
-                    <div class="chat-message bot">
-                      ✨ Bem-vindo(a) ao teu bot de finanças! ✨<br>
-                      <br>
-    Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:<br>
-    1️⃣ Vai ao Dashboard<br>
-    2️⃣ Na secção "Categorias", clica em "Editar"<br>
-    3️⃣ Clica em "Adicionar", escolhe um nome, emoji e cor (e subcategorias, se quiseres)<br>
-    4️⃣ Clica em "Guardar"<br>
-    <br>
-    Depois de teres pelo menos uma categoria, volta aqui e usa o chat:<br>
-    💰 "adicionar 50" — para somar 50€ a uma categoria (ex: um rendimento)<br>
-    ➖ "remover 20" — para subtrair 20€ de uma categoria (ex: uma despesa)<br>
-    ❌ "desfazer" ou "cancelar" — para apagar a última transação<br>
-    <br>
-    Eu pergunto sempre em que categoria (e subcategoria, se a categoria tiver) queres aplicar o valor.
-
-                    </div>
-                    {% else %}
-                        {% for msg in chat_history %}
-                        <div class="chat-message {{ msg.sender }}">
-                            {{ msg.message|replace('\n', '<br>')|safe }}
-                        </div>
-                        {% endfor %}
-                    {% endif %}
-                    
-                    <div class="typing-indicator" id="typingIndicator">
-                        <span></span><span></span><span></span>
-                    </div>
+            <span class="presence"><i></i> pronta para anotar</span>
+        </div>
+        <div class="card-body p-0 d-flex flex-column">
+            <div class="chat-container" id="chatContainer">
+                {% if not chat_history %}
+                <div class="chat-message bot">
+                    Oi! Pode escrever como você falaria:<br>
+                    “recebi 2500 de salário” ou “gastei 45 no mercado”.<br><br>
+                    Eu mostro o que entendi e só gravo quando você confirma.
                 </div>
-                
-                <div class="chat-input-container">
-                    <form id="chatForm" class="d-flex gap-2">
-                        <textarea class="form-control chat-input" id="messageInput" rows="1"
-                                  placeholder="Escreve a tua mensagem..." autocomplete="off" required></textarea>
-                        <button type="submit" class="btn btn-primary send-btn">
-                            <i class="bi bi-send"></i>
-                        </button>
-                    </form>
+                {% else %}
+                    {% for msg in chat_history %}
+                    <div class="chat-message {{ msg.sender }}">
+                        {{ msg.message|e|replace('\n', '<br>')|safe }}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+                <div class="typing-indicator" id="typingIndicator">
+                    <span></span><span></span><span></span>
                 </div>
+            </div>
+            <div class="chat-input-container">
+                <div class="quick-row" id="quickActions">
+                    <button type="button" class="quick-chip" data-message="Recebi 2500 de salário">Recebi salário</button>
+                    <button type="button" class="quick-chip" data-message="Gastei 80 no mercado">Mercado</button>
+                    <button type="button" class="quick-chip" data-message="Paguei 25 de transporte">Transporte</button>
+                    <button type="button" class="quick-chip" data-message="Gastei 18 no café">Café</button>
+                    <button type="button" class="quick-chip" data-message="desfazer">Desfazer</button>
+                </div>
+                <form id="chatForm" class="d-flex gap-2 mt-3">
+                    <textarea class="form-control chat-input" id="messageInput" rows="1"
+                              placeholder="Ex.: gastei 45 no mercado" autocomplete="off" required></textarea>
+                    <button type="submit" class="btn btn-primary send-btn" aria-label="Enviar">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </form>
             </div>
         </div>
     </div>
+    <aside class="card balance-panel">
+        <h5 class="mb-1">Suas caixinhas</h5>
+        <p class="text-muted">Atualizam quando você confirma um lançamento.</p>
+        <div id="balanceList">
+            {% if categories %}
+                {% for category in categories %}
+                <div class="balance-row" style="--accent: {{ category.color or '#8b5cf6' }}">
+                    <span>{{ category.emoji or '📁' }} {{ category.name }}</span>
+                    <strong>—</strong>
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="text-muted mb-0">Ainda não há categorias. A primeira frase cria uma.</p>
+            {% endif %}
+        </div>
+    </aside>
 </div>
 {% endblock %}
 
@@ -157,66 +74,94 @@ const chatContainer = document.getElementById('chatContainer');
 const chatForm = document.getElementById('chatForm');
 const messageInput = document.getElementById('messageInput');
 const typingIndicator = document.getElementById('typingIndicator');
+const balanceList = document.getElementById('balanceList');
 
-// Scroll to bottom
 function scrollToBottom() {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-scrollToBottom();
+function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
 
-// Handle Enter key (send message) and Shift+Enter (new line)
-messageInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        chatForm.dispatchEvent(new Event('submit'));
+function renderBalances(balances) {
+    if (!balanceList || !Array.isArray(balances)) return;
+    if (!balances.length) {
+        balanceList.innerHTML = '<p class="text-muted mb-0">Ainda não há categorias. A primeira frase cria uma.</p>';
+        return;
     }
-});
+    balanceList.innerHTML = balances.map((item, index) => `
+        <div class="balance-row" style="--accent:${item.color || '#8b5cf6'}; animation-delay:${index * 40}ms">
+            <span>${item.emoji || '📁'} ${escapeHtml(item.name)}</span>
+            <strong class="${Number(item.balance) < 0 ? 'neg' : 'pos'}">€${Number(item.balance).toFixed(2)}</strong>
+        </div>
+    `).join('');
+}
 
-chatForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const message = messageInput.value.trim();
-    if (!message) return;
-    
-    // Add user message
-    addMessage(message, 'user');
+function addMessage(text, sender, suggestions) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${sender}`;
+    messageDiv.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
+    if (sender === 'bot' && Array.isArray(suggestions) && suggestions.length) {
+        const row = document.createElement('div');
+        row.className = 'suggestion-row';
+        suggestions.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'suggestion-chip' + (item.variant === 'primary' ? ' is-primary' : '');
+            button.textContent = item.label;
+            button.addEventListener('click', () => sendMessage(item.message));
+            row.appendChild(button);
+        });
+        messageDiv.appendChild(row);
+    }
+    chatContainer.insertBefore(messageDiv, typingIndicator);
+    scrollToBottom();
+}
+
+async function sendMessage(message) {
+    const text = (message || '').trim();
+    if (!text) return;
+    addMessage(text, 'user');
     messageInput.value = '';
-    
-    // Show typing indicator
     typingIndicator.style.display = 'block';
     scrollToBottom();
-    
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ message })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text })
         });
-        
         const data = await response.json();
-        
-        // Hide typing indicator
         typingIndicator.style.display = 'none';
-        
-        // Add bot response
-        addMessage(data.response, 'bot');
+        addMessage(data.response || 'Não consegui responder agora.', 'bot', data.suggestions || []);
+        renderBalances(data.balances);
     } catch (error) {
         typingIndicator.style.display = 'none';
         addMessage('Erro ao comunicar com o servidor. Tenta novamente.', 'bot');
     }
+}
+
+scrollToBottom();
+
+messageInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+    }
 });
 
-function addMessage(text, sender) {
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `chat-message ${sender}`;
-    messageDiv.innerHTML = text.replace(/\n/g, '<br>');
-    
-    // Insert before typing indicator
-    chatContainer.insertBefore(messageDiv, typingIndicator);
-    scrollToBottom();
-}
+chatForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendMessage(messageInput.value);
+});
+
+document.getElementById('quickActions').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-message]');
+    if (!button) return;
+    sendMessage(button.dataset.message);
+});
 </script>
 {% endblock %}

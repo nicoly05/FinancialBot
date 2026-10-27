@@ -1,0 +1,35 @@
+{% if planning_data %}
+<div class="plan-insights">
+    {% if planning_data.headline %}
+    <div class="plan-headline">{{ planning_data.headline }}</div>
+    {% endif %}
+    {% if planning_data.read_excerpt %}
+    <blockquote class="plan-quote">“{{ planning_data.read_excerpt }}”</blockquote>
+    {% endif %}
+    {% for alert in planning_data.alerts or [] %}
+    <div class="alert alert-warning py-2">{{ alert }}</div>
+    {% endfor %}
+    {% if planning_data.explanations %}
+    <h6 class="mb-2">Por que o plano ficou assim</h6>
+    <ul class="insight-list">
+        {% for line in planning_data.explanations %}
+        <li>{{ line }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% if planning_data.boxes %}
+    <div class="box-grid">
+        {% for box in planning_data.boxes %}
+        <div class="goal-box">
+            <div class="fw-bold">{{ box.emoji }} {{ box.name }}</div>
+            <div>€{{ '%.2f'|format(box.monthly or 0) }}/mês</div>
+            <small class="text-muted">{{ box.detail }}</small>
+            {% if box.progress %}
+            <div class="progress"><span style="width: {{ box.progress }}%"></span></div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
