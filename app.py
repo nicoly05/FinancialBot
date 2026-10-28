@@ -4,15 +4,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, upgrade
 from sqlalchemy import inspect, text
 import bcrypt
+import hashlib
 import json
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, date
 from config import Config
 import requests
 from planning_engine import compute_financial_plan
 from chat_engine import fold as fold_chat
 from chat_engine import interpret_message
+from mailer import send_password_reset
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
@@ -114,10 +117,31 @@ def _ensure_financial_planning_columns():
         db.session.commit()
 
 
+def _ensure_user_columns():
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    if 'user' not in tables:
+        return
+    existing = {column['name'] for column in inspector.get_columns('user')}
+    missing = {
+        'full_name': 'VARCHAR(120)',
+        'phone': 'VARCHAR(40)',
+        'birth_date': 'DATE',
+        'city': 'VARCHAR(80)',
+        'currency': 'VARCHAR(8)',
+        'occupation': 'VARCHAR(80)',
+    }
+    for name, column_sql in missing.items():
+        if name not in existing:
+            db.session.execute(text(f'ALTER TABLE user ADD COLUMN {name} {column_sql}'))
+    db.session.commit()
+
+
 def init_database():
     with app.app_context():
         db.create_all()
         _ensure_financial_planning_columns()
+        _ensure_user_columns()
         migrations_dir = os.path.join(BASE_DIR, 'migrations')
         if os.path.isdir(migrations_dir):
             try:
@@ -154,8 +178,36 @@ class User(UserMixin, db.Model):
     security_answer = db.Column(db.LargeBinary, nullable=False)
     categories_configured = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    email = db.Column(db.String(120), nullable=True)
+    email = db.Column(db.String(120), unique=True, nullable=True)
     profile_photo = db.Column(db.String(255), nullable=True)  # URL da foto de perfil
+    full_name = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
+    birth_date = db.Column(db.Date, nullable=True)
+    city = db.Column(db.String(80), nullable=True)
+    currency = db.Column(db.String(8), default='EUR')
+    occupation = db.Column(db.String(80), nullable=True)
+
+
+class UserPreset(db.Model):
+    __tablename__ = 'user_preset'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    key = db.Column(db.String(40), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    __table_args__ = (db.UniqueConstraint('user_id', 'key', name='uq_user_preset_key'),)
+
+
+class PasswordResetCode(db.Model):
+    __tablename__ = 'password_reset_code'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    code_hash = db.Column(db.String(128), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    used = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class Session(db.Model):
@@ -1077,6 +1129,274 @@ def login():
     return render_template('login.html')
 
 
+PRESET_CATALOG = (
+    {'key': 'salario', 'label': 'Recebi salário', 'tx_type': 'income', 'category': 'Salário', 'emoji': '💰'},
+    {'key': 'mercado', 'label': 'Mercado', 'tx_type': 'expense', 'category': 'Mercado', 'emoji': '🛒'},
+    {'key': 'transporte', 'label': 'Transporte', 'tx_type': 'expense', 'category': 'Transporte', 'emoji': '🚌'},
+    {'key': 'cafe', 'label': 'Café', 'tx_type': 'expense', 'category': 'Café', 'emoji': '☕'},
+)
+PRESET_BY_KEY = {item['key']: item for item in PRESET_CATALOG}
+RESET_CODE_MINUTES = 15
+RESET_MAX_SENDS = 3
+RESET_MAX_ATTEMPTS = 5
+
+
+def _normalize_email(value):
+    return (value or '').strip().lower()
+
+
+def _valid_email(value):
+    return bool(re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value or ''))
+
+
+def _currency_symbol(user=None):
+    code = ((getattr(user, 'currency', None) or 'EUR') if user else 'EUR').upper()
+    return {'EUR': '€', 'BRL': 'R$', 'USD': '$'}.get(code, '€')
+
+
+def _hash_reset_code(code):
+    secret = app.config.get('SECRET_KEY') or 'dev'
+    return hashlib.sha256(f'{secret}:{code}'.encode()).hexdigest()
+
+
+def _request_reset_code(email):
+    if not _valid_email(email):
+        return 'invalid'
+    window_start = datetime.now() - timedelta(minutes=RESET_CODE_MINUTES)
+    recent = PasswordResetCode.query.filter(
+        PasswordResetCode.email == email,
+        PasswordResetCode.created_at >= window_start,
+    ).count()
+    if recent >= RESET_MAX_SENDS:
+        return 'rate_limited'
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    code = f'{secrets.randbelow(1000000):06d}'
+    row = PasswordResetCode(
+        email=email,
+        user_id=user.id if user else None,
+        code_hash=_hash_reset_code(code) if user else 'unused',
+        expires_at=datetime.now() + timedelta(minutes=RESET_CODE_MINUTES),
+        attempts=0,
+        used=False,
+    )
+    db.session.add(row)
+    db.session.commit()
+    if user:
+        send_password_reset(user.email, user.username, code)
+    return 'sent'
+
+
+def _verify_reset_code(email, code):
+    row = PasswordResetCode.query.filter_by(email=email, used=False).order_by(
+        PasswordResetCode.id.desc()
+    ).first()
+    if not row or not row.user_id or row.expires_at < datetime.now():
+        return False
+    row.attempts = (row.attempts or 0) + 1
+    if row.attempts > RESET_MAX_ATTEMPTS:
+        row.used = True
+        db.session.commit()
+        return False
+    if row.code_hash != _hash_reset_code(code):
+        db.session.commit()
+        return False
+    row.used = True
+    db.session.commit()
+    session['reset_user_id'] = row.user_id
+    session['reset_until'] = (datetime.now() + timedelta(minutes=10)).isoformat()
+    return True
+
+
+def _reset_session_user():
+    user_id = session.get('reset_user_id')
+    until = session.get('reset_until')
+    if not user_id or not until:
+        return None
+    try:
+        if datetime.fromisoformat(until) < datetime.now():
+            session.pop('reset_user_id', None)
+            session.pop('reset_until', None)
+            return None
+    except ValueError:
+        return None
+    return db.session.get(User, int(user_id))
+
+
+def _preset_map(user_id):
+    rows = UserPreset.query.filter_by(user_id=user_id).all()
+    return {row.key: row for row in rows}
+
+
+def _preset_rows(user_id):
+    saved = _preset_map(user_id)
+    rows = []
+    for spec in PRESET_CATALOG:
+        current = saved.get(spec['key'])
+        rows.append({
+            **spec,
+            'amount': current.amount if current else None,
+            'message': f'__preset__:{spec["key"]}',
+        })
+    return rows
+
+
+def _quick_suggestions(user_id):
+    chips = []
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    for row in _preset_rows(user_id):
+        label = f'{row["emoji"]} {row["label"]}'
+        if row['amount'] is not None:
+            label += f' · {symbol}{row["amount"]:.2f}'
+        chips.append({'label': label, 'message': row['message']})
+    chips.append({'label': 'Desfazer', 'message': 'desfazer'})
+    return chips
+
+
+def _save_preset(user_id, key, amount):
+    spec = PRESET_BY_KEY.get(key)
+    if not spec or amount is None or amount <= 0:
+        return None
+    row = UserPreset.query.filter_by(user_id=user_id, key=key).first()
+    if row:
+        row.amount = float(amount)
+        row.updated_at = datetime.now()
+    else:
+        row = UserPreset(user_id=user_id, key=key, amount=float(amount))
+        db.session.add(row)
+    db.session.flush()
+    return row
+
+
+def _save_presets_from_form(user_id, form):
+    for spec in PRESET_CATALOG:
+        raw = (form.get(f'preset_{spec["key"]}') or '').strip()
+        existing = UserPreset.query.filter_by(user_id=user_id, key=spec['key']).first()
+        if not raw:
+            if existing:
+                db.session.delete(existing)
+            continue
+        try:
+            amount = float(raw.replace(',', '.'))
+        except ValueError:
+            continue
+        if amount <= 0:
+            continue
+        _save_preset(user_id, spec['key'], amount)
+
+
+def _parse_user_amount(text):
+    match = re.search(r'(\d+(?:[.,]\d{1,2})?)', fold_chat(text or ''))
+    if not match:
+        return None
+    raw = match.group(1)
+    if ',' in raw and '.' not in raw:
+        raw = raw.replace(',', '.')
+    try:
+        value = round(float(raw), 2)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _match_preset_edit(message):
+    text = fold_chat(message or '')
+    patterns = (
+        r'(?:alterar|mudar|atualizar|editar|corrigir)\s+(?:o\s+|a\s+)?(?:valor\s+(?:do|da|de)\s+)?([a-z]+)\s+(?:para|pra)\s+(\d+(?:[.,]\d{1,2})?)',
+        r'(?:o|a)\s+([a-z]+)\s+(?:agora\s+)?(?:custa|fica|vale)\s+(\d+(?:[.,]\d{1,2})?)',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        key = _preset_key_from_word(match.group(1))
+        amount = _parse_user_amount(match.group(2))
+        if key and amount:
+            return key, amount
+    return None
+
+
+def _preset_key_from_word(word):
+    folded = fold_chat(word)
+    aliases = {
+        'salario': 'salario', 'salário': 'salario', 'renda': 'salario',
+        'mercado': 'mercado', 'supermercado': 'mercado',
+        'transporte': 'transporte', 'uber': 'transporte', 'onibus': 'transporte',
+        'cafe': 'cafe', 'café': 'cafe',
+    }
+    if folded in aliases:
+        return aliases[folded]
+    for spec in PRESET_CATALOG:
+        if folded in fold_chat(spec['category']) or folded in fold_chat(spec['label']):
+            return spec['key']
+    return None
+
+
+def _preset_confirm(user_id, user_session, spec, amount, intro):
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    _save_pending(user_session, {
+        'kind': 'confirm',
+        'transactions': [{
+            'type': spec['tx_type'],
+            'amount': amount,
+            'category': spec['category'],
+            'date_hint': 'today',
+        }],
+    })
+    db.session.commit()
+    kind = 'receita' if spec['tx_type'] == 'income' else 'despesa'
+    return _chat_result(
+        f'{intro}\n\nPosso registrar uma {kind} de {symbol}{amount:.2f} em {spec["category"]}?',
+        CONFIRM_SUGGESTIONS,
+        user_id=user_id,
+    )
+
+
+def _start_preset(user_id, user_session, key):
+    spec = PRESET_BY_KEY.get(key)
+    if not spec:
+        return _chat_result('Não conheço esse atalho.', user_id=user_id)
+    saved = _preset_map(user_id).get(key)
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    if not saved:
+        _save_pending(user_session, {'kind': 'ask_preset_amount', 'key': key})
+        db.session.commit()
+        return _chat_result(
+            f'Ainda não guardei um valor habitual para {spec["category"]}. '
+            f'Quanto você costuma usar? O café, por exemplo, pode ser {symbol}2 — me diga o seu número.',
+            user_id=user_id,
+        )
+    return _preset_confirm(
+        user_id,
+        user_session,
+        spec,
+        saved.amount,
+        f'Vou usar o valor habitual de {spec["category"]}: {symbol}{saved.amount:.2f}. '
+        'Se mudou, escreva "alterar café para 3" (trocando o nome e o valor).',
+    )
+
+
+def _answer_preset_amount(message, user_id, user_session, pending, interpreted):
+    if interpreted.get('kind') == 'transactions' and interpreted['transactions'] and interpreted['transactions'][0].get('category'):
+        _save_pending(user_session, None)
+        return None
+    amount = _parse_user_amount(message)
+    spec = PRESET_BY_KEY.get(pending.get('key'))
+    if not spec or not amount:
+        return _chat_result(
+            'Não entendi o valor. Responda só com o número que você costuma usar, por exemplo 2.',
+            user_id=user_id,
+        )
+    _save_preset(user_id, spec['key'], amount)
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    return _preset_confirm(
+        user_id,
+        user_session,
+        spec,
+        amount,
+        f'Guardei {symbol}{amount:.2f} como valor habitual de {spec["category"]}. Dá para mudar no perfil ou por aqui.',
+    )
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -1086,12 +1406,23 @@ def register():
         security_question = request.form.get('security_question')
         security_answer = request.form.get('security_answer')
 
+        email = _normalize_email(request.form.get('email'))
+        full_name = (request.form.get('full_name') or '').strip()
+
         if password != confirm_password:
             flash('As palavras-passe não coincidem', 'error')
             return render_template('register.html')
 
+        if not _valid_email(email):
+            flash('Informe um e-mail válido. Ele é obrigatório para recuperar a senha.', 'error')
+            return render_template('register.html')
+
         if User.query.filter_by(username=username).first():
             flash('Este nome de utilizador já existe', 'error')
+            return render_template('register.html')
+
+        if User.query.filter(db.func.lower(User.email) == email).first():
+            flash('Este e-mail já está associado a outra conta.', 'error')
             return render_template('register.html')
 
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -1102,7 +1433,10 @@ def register():
             password=hashed_password,
             security_question=security_question,
             security_answer=hashed_answer,
-            categories_configured=False
+            categories_configured=False,
+            email=email,
+            full_name=full_name or None,
+            currency=(request.form.get('currency') or 'EUR').upper(),
         )
 
         db.session.add(user)
@@ -1115,26 +1449,46 @@ def register():
 
 @app.route('/recover', methods=['GET', 'POST'])
 def recover():
+    step = 'email'
+    if _reset_session_user():
+        step = 'password'
     if request.method == 'POST':
-        username = request.form.get('username')
-        security_answer = request.form.get('security_answer')
-        new_password = request.form.get('new_password')
-
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            flash('Utilizador não encontrado', 'error')
-            return render_template('recover.html')
-
-        if bcrypt.checkpw(security_answer.lower().encode('utf-8'), user.security_answer):
-            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-            user.password = hashed_password
+        action = request.form.get('action') or 'send'
+        if action == 'send':
+            email = _normalize_email(request.form.get('email'))
+            status = _request_reset_code(email)
+            if status == 'rate_limited':
+                flash('Espere alguns minutos antes de pedir outro código.', 'error')
+            elif not _valid_email(email):
+                flash('Informe um e-mail válido.', 'error')
+            else:
+                flash('Se este e-mail estiver cadastrado, enviamos um código de 6 dígitos. Ele expira em 15 minutos.', 'success')
+                step = 'code'
+                return render_template('recover.html', step='code', email=email)
+        elif action == 'verify':
+            email = _normalize_email(request.form.get('email'))
+            code = (request.form.get('code') or '').strip()
+            if _verify_reset_code(email, code):
+                return render_template('recover.html', step='password', email=email)
+            flash('Código inválido ou expirado.', 'error')
+            return render_template('recover.html', step='code', email=email)
+        elif action == 'reset':
+            user = _reset_session_user()
+            new_password = request.form.get('new_password') or ''
+            confirm = request.form.get('confirm_password') or ''
+            if not user:
+                flash('A verificação expirou. Peça um novo código.', 'error')
+                return render_template('recover.html', step='email')
+            if len(new_password) < 6 or new_password != confirm:
+                flash('A nova senha precisa coincidir e ter pelo menos 6 caracteres.', 'error')
+                return render_template('recover.html', step='password')
+            user.password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
             db.session.commit()
-            flash('Palavra-passe redefinida com sucesso!', 'success')
+            session.pop('reset_user_id', None)
+            session.pop('reset_until', None)
+            flash('Senha redefinida. Entre com a nova senha.', 'success')
             return redirect(url_for('login'))
-        else:
-            flash('Resposta à pergunta de segurança incorreta', 'error')
-
-    return render_template('recover.html')
+    return render_template('recover.html', step=step, email=request.args.get('email', ''))
 
 
 @app.route('/logout')
@@ -1148,10 +1502,17 @@ def logout():
 @login_required
 def profile():
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = _normalize_email(request.form.get('email'))
         profile_photo = request.form.get('profile_photo')
 
-        # Handle file upload to Supabase
+        if not _valid_email(email):
+            flash('O e-mail é obrigatório e precisa ser válido.', 'error')
+            return redirect(url_for('profile'))
+        taken = User.query.filter(db.func.lower(User.email) == email, User.id != current_user.id).first()
+        if taken:
+            flash('Este e-mail já está associado a outra conta.', 'error')
+            return redirect(url_for('profile'))
+
         image_file = request.files.get('image_file')
         if image_file and image_file.filename:
             image_url = upload_image_to_supabase(image_file, 'profile')
@@ -1159,14 +1520,21 @@ def profile():
                 profile_photo = image_url
 
         current_user.email = email
+        current_user.full_name = (request.form.get('full_name') or '').strip() or None
+        current_user.phone = (request.form.get('phone') or '').strip() or None
+        current_user.city = (request.form.get('city') or '').strip() or None
+        current_user.occupation = (request.form.get('occupation') or '').strip() or None
+        current_user.currency = (request.form.get('currency') or 'EUR').upper()
+        birth_raw = (request.form.get('birth_date') or '').strip()
+        current_user.birth_date = _parse_plan_date(birth_raw) if birth_raw else None
         if profile_photo:
             current_user.profile_photo = profile_photo
-
+        _save_presets_from_form(current_user.id, request.form)
         db.session.commit()
-        flash('Perfil atualizado com sucesso!', 'success')
+        flash('Perfil e preferências atualizados.', 'success')
         return redirect(url_for('profile'))
 
-    return render_template('profile.html', user=current_user)
+    return render_template('profile.html', user=current_user, presets=_preset_rows(current_user.id))
 
 
 @app.route('/planning', methods=['GET', 'POST'])
@@ -1633,6 +2001,7 @@ def chat():
         session=user_session,
         categories=user_categories,
         chat_history=chat_history,
+        presets=_preset_rows(current_user.id),
     )
 
 
@@ -1641,8 +2010,15 @@ def chat():
 def api_chat():
     data = request.json or {}
     user_message = (data.get('message') or '').strip()
+    preset_key = (data.get('preset') or '').strip()
+    if preset_key:
+        user_message = f'__preset__:{preset_key}'
+    display_message = user_message
+    if user_message.startswith('__preset__:'):
+        spec = PRESET_BY_KEY.get(user_message.split(':', 1)[1].strip())
+        display_message = spec['label'] if spec else user_message
 
-    chat_msg = ChatHistory(user_id=current_user.id, message=user_message, sender='user', timestamp=datetime.now())
+    chat_msg = ChatHistory(user_id=current_user.id, message=display_message, sender='user', timestamp=datetime.now())
     db.session.add(chat_msg)
 
     result = process_chat_message(user_message, current_user.id)
@@ -2172,16 +2548,10 @@ CHAT_HELP_MESSAGE = (
     "• paguei 25 de transporte\n"
     "• recebi 2500 de salário e gastei 80 no mercado\n\n"
     "Eu mostro o que entendi e só gravo quando você confirma.\n"
+    "Os atalhos (café, mercado, transporte, salário) perguntam o seu valor na primeira vez.\n"
+    "Para mudar depois: \"alterar café para 2\" ou o perfil.\n"
     "Para apagar o último lançamento, escreva desfazer."
 )
-
-QUICK_SUGGESTIONS = [
-    {'label': 'Recebi salário', 'message': 'Recebi 2500 de salário'},
-    {'label': 'Mercado', 'message': 'Gastei 80 no mercado'},
-    {'label': 'Transporte', 'message': 'Paguei 25 de transporte'},
-    {'label': 'Café', 'message': 'Gastei 18 no café'},
-    {'label': 'Desfazer', 'message': 'desfazer'},
-]
 
 CONFIRM_SUGGESTIONS = [
     {'label': 'Confirmar', 'message': 'sim', 'variant': 'primary'},
@@ -2249,7 +2619,7 @@ def _save_pending(user_session, pending):
 def _chat_result(text, suggestions=None, saved=None, user_id=None):
     return {
         'text': text,
-        'suggestions': suggestions if suggestions is not None else QUICK_SUGGESTIONS,
+        'suggestions': suggestions if suggestions is not None else _quick_suggestions(user_id),
         'saved': saved,
         'balances': _category_balances(user_id) if user_id else [],
     }
@@ -2347,8 +2717,29 @@ def process_chat_message(message, user_id):
 def handle_value_modification(message, user_id):
     user_session = Session.query.filter_by(user_id=user_id).first() or _get_or_create_user_session(user_id)
     pending = _load_pending(user_session)
+    raw_message = (message or '').strip()
+    if raw_message.startswith('__preset__:'):
+        return _start_preset(user_id, user_session, raw_message.split(':', 1)[1].strip())
+    edit = _match_preset_edit(raw_message)
+    if edit and not (pending.get('kind') == 'ask_preset_amount'):
+        key, amount = edit
+        spec = PRESET_BY_KEY[key]
+        _save_preset(user_id, key, amount)
+        symbol = _currency_symbol(db.session.get(User, user_id))
+        return _preset_confirm(
+            user_id,
+            user_session,
+            spec,
+            amount,
+            f'Atualizei o valor habitual de {spec["category"]} para {symbol}{amount:.2f}.',
+        )
     interpreted = interpret_message(message or '')
     kind = interpreted['kind']
+    if pending.get('kind') == 'ask_preset_amount' and kind not in {'reject', 'undo'}:
+        answered = _answer_preset_amount(message, user_id, user_session, pending, interpreted)
+        if answered is not None:
+            return answered
+        pending = _load_pending(user_session)
     user_categories = _get_user_categories(user_id)
 
     if message and message.isdigit() and user_session.pending_action and user_session.pending_amount:
@@ -2362,28 +2753,28 @@ def handle_value_modification(message, user_id):
             if re.search(r'\b(cancelar|cancela|desfazer|anular)\b', fold_chat(message or '')) and last_transaction:
                 db.session.delete(last_transaction)
                 db.session.commit()
-                return _chat_result('Desfiz o último lançamento.', QUICK_SUGGESTIONS, user_id=user_id)
+                return _chat_result('Desfiz o último lançamento.', user_id=user_id)
         if kind == 'undo':
             last_transaction = Transaction.query.filter_by(user_id=user_id).order_by(
                 Transaction.timestamp.desc(), Transaction.id.desc()
             ).first()
             if not last_transaction:
-                return _chat_result('Não há lançamento para desfazer.', QUICK_SUGGESTIONS, user_id=user_id)
+                return _chat_result('Não há lançamento para desfazer.', user_id=user_id)
             db.session.delete(last_transaction)
             db.session.commit()
-            return _chat_result('Desfiz o último lançamento. O saldo já foi atualizado.', QUICK_SUGGESTIONS, user_id=user_id)
+            return _chat_result('Desfiz o último lançamento. O saldo já foi atualizado.', user_id=user_id)
 
     if kind == 'reject' and pending:
         _save_pending(user_session, None)
         db.session.commit()
-        return _chat_result('Beleza, não registrei nada.', QUICK_SUGGESTIONS, user_id=user_id)
+        return _chat_result('Beleza, não registrei nada.', user_id=user_id)
 
     if kind == 'confirm' and pending.get('kind') == 'confirm':
         saved = _commit_chat_transactions(user_id, pending.get('transactions') or [])
         _save_pending(user_session, None)
         db.session.commit()
         if not saved:
-            return _chat_result('Não encontrei um lançamento para confirmar.', QUICK_SUGGESTIONS, user_id=user_id)
+            return _chat_result('Não encontrei um lançamento para confirmar.', user_id=user_id)
         lines = []
         balances = {item['name']: item['balance'] for item in _category_balances(user_id)}
         for item in saved:
@@ -2393,7 +2784,7 @@ def handle_value_modification(message, user_id):
                 f'Saldo da categoria: {_money(balances.get(item["category"], 0))}.'
             )
         text = 'Pronto, registrei no seu extrato:\n\n' + '\n'.join(lines) + '\n\nO dashboard já mostra esses valores.'
-        return _chat_result(text, QUICK_SUGGESTIONS, saved=saved, user_id=user_id)
+        return _chat_result(text, saved=saved, user_id=user_id)
 
     if pending.get('kind') == 'choose_category' and kind not in {'transactions', 'help', 'undo'}:
         chosen = (message or '').strip()
@@ -2428,7 +2819,7 @@ def handle_value_modification(message, user_id):
         )
 
     if kind == 'help':
-        return _chat_result(CHAT_HELP_MESSAGE, QUICK_SUGGESTIONS, user_id=user_id)
+        return _chat_result(CHAT_HELP_MESSAGE, user_id=user_id)
 
     if kind == 'transactions':
         transactions = interpreted['transactions']
@@ -2455,7 +2846,6 @@ def handle_value_modification(message, user_id):
 
     return _chat_result(
         'Não entendi o valor. Tenta algo como "gastei 45 no mercado" ou "recebi 2500 de salário".',
-        QUICK_SUGGESTIONS,
         user_id=user_id,
     )
 
@@ -2484,7 +2874,6 @@ def _legacy_numeric_selection(message, user_id, user_session):
                 db.session.commit()
                 return _chat_result(
                     f'Registrei {_money(amount)} em {selected_sub.name} ({category.name}).',
-                    QUICK_SUGGESTIONS,
                     user_id=user_id,
                 )
     cat_index = int(message) - 1
@@ -2515,10 +2904,9 @@ def _legacy_numeric_selection(message, user_id, user_session):
         db.session.commit()
         return _chat_result(
             f'Registrei {_money(amount)} em {selected_cat.name}.',
-            QUICK_SUGGESTIONS,
             user_id=user_id,
         )
-    return _chat_result('Não encontrei essa opção.', QUICK_SUGGESTIONS, user_id=user_id)
+    return _chat_result('Não encontrei essa opção.', user_id=user_id)
 
 init_database()
 

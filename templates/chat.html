@@ -8,7 +8,7 @@
         <div class="chat-hero">
             <div>
                 <h4 class="mb-1">Chat financeiro</h4>
-                <p class="text-muted mb-0">Fale naturalmente. Eu confirmo e lanço no seu extrato.</p>
+                <p class="text-muted mb-0">Fale naturalmente. Atalhos perguntam o seu valor na primeira vez. <a href="{{ url_for('profile') }}#valores-habituais">Editar valores</a></p>
             </div>
             <span class="presence"><i></i> pronta para anotar</span>
         </div>
@@ -33,10 +33,9 @@
             </div>
             <div class="chat-input-container">
                 <div class="quick-row" id="quickActions">
-                    <button type="button" class="quick-chip" data-message="Recebi 2500 de salário">Recebi salário</button>
-                    <button type="button" class="quick-chip" data-message="Gastei 80 no mercado">Mercado</button>
-                    <button type="button" class="quick-chip" data-message="Paguei 25 de transporte">Transporte</button>
-                    <button type="button" class="quick-chip" data-message="Gastei 18 no café">Café</button>
+                    {% for preset in presets %}
+                    <button type="button" class="quick-chip" data-message="{{ preset.message }}">{{ preset.emoji }} {{ preset.label }}{% if preset.amount is not none %} · €{{ '%.2f'|format(preset.amount) }}{% endif %}</button>
+                    {% endfor %}
                     <button type="button" class="quick-chip" data-message="desfazer">Desfazer</button>
                 </div>
                 <form id="chatForm" class="d-flex gap-2 mt-3">
@@ -138,6 +137,13 @@ async function sendMessage(message) {
         typingIndicator.style.display = 'none';
         addMessage(data.response || 'Não consegui responder agora.', 'bot', data.suggestions || []);
         renderBalances(data.balances);
+        const quick = document.getElementById('quickActions');
+        const chips = data.suggestions || [];
+        if (quick && chips.length && !chips.some((item) => item.message === 'sim')) {
+            quick.innerHTML = chips.map((item) => (
+                `<button type="button" class="quick-chip" data-message="${escapeHtml(item.message)}">${escapeHtml(item.label)}</button>`
+            )).join('');
+        }
     } catch (error) {
         typingIndicator.style.display = 'none';
         addMessage('Erro ao comunicar com o servidor. Tenta novamente.', 'bot');

@@ -346,19 +346,6 @@
         <h2 class="mb-4"><i class="bi bi-calculator"></i> Planejamento Financeiro Personalizado</h2>
         <p class="text-muted mb-4">Conte como você quer organizar o dinheiro. O plano muda conforme o que você escreve, os gastos e as metas.</p>
 
-        <div id="livePlanResult" class="plan-live">
-            {% if planning_data and favorite_plan %}
-            <div class="card p-4 mb-3">
-                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                    <h3 class="mb-0">{{ favorite_plan.name }}</h3>
-                    <span class="badge bg-success">Plano em uso</span>
-                </div>
-                <p class="mt-2 mb-2">Renda mensal: €{{ '%.2f'|format(planning_data.monthly_income) }}</p>
-                {% include 'partials/plan_insights.html' %}
-            </div>
-            {% endif %}
-        </div>
-
         <div class="planning-menu">
             <div class="planning-menu-item" onclick="openModal('myPlanningModal')" style="cursor: pointer;">
                 <h3>Meu planejamento</h3>
@@ -1329,9 +1316,7 @@ function renderPlan(data) {
             ${checklist}
         </div>`;
     const result = document.getElementById('planningResult');
-    const live = document.getElementById('livePlanResult');
     if (result) result.innerHTML = html;
-    if (live) live.innerHTML = `<div class="card p-4 mb-3">${html}</div>`;
     requestAnimationFrame(() => {
         document.querySelectorAll('[data-target]').forEach(segment => {
             segment.style.width = `${segment.dataset.target}%`;
@@ -1353,7 +1338,7 @@ async function previewPlan() {
             throw new Error(data.error || 'preview');
         }
         renderPlan(data.planning_data);
-        document.getElementById('livePlanResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('planningResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
         if (result) {
             result.innerHTML = '<div class="alert alert-danger">Não consegui calcular o plano. Confira a renda e tente de novo.</div>';
@@ -1425,7 +1410,7 @@ function submitForm() {
             throw new Error(data.error || 'erro');
         }
         renderPlan(data.planning_data);
-        document.getElementById('livePlanResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('planningResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<i class="bi bi-check"></i> Plano salvo';
     })
