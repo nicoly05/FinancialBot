@@ -120,10 +120,17 @@ function addMessage(text, sender, suggestions) {
     scrollToBottom();
 }
 
+const PRESET_LABELS = {
+    '__preset__:cafe': 'Café',
+    '__preset__:mercado': 'Mercado',
+    '__preset__:transporte': 'Transporte',
+    '__preset__:salario': 'Recebi salário'
+};
+
 async function sendMessage(message) {
     const text = (message || '').trim();
     if (!text) return;
-    addMessage(text, 'user');
+    addMessage(PRESET_LABELS[text] || text, 'user');
     messageInput.value = '';
     typingIndicator.style.display = 'block';
     scrollToBottom();
