@@ -90,16 +90,61 @@
             </div>
             
             <div class="mb-3">
-                <label class="form-label">Nome de Utilizador</label>
+                <label class="form-label">Nome de utilizador</label>
                 <input type="text" class="form-control" value="{{ user.username }}" disabled>
                 <small class="text-muted">O nome de utilizador não pode ser alterado</small>
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Email</label>
-                <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" placeholder="seu@email.com">
-                <small class="text-muted">Usado para notificações sobre transações e contas obrigatórias</small>
+                <label class="form-label">Nome completo</label>
+                <input type="text" class="form-control" name="full_name" value="{{ user.full_name or '' }}" placeholder="Nicoly">
             </div>
+
+            <div class="mb-3">
+                <label class="form-label">E-mail</label>
+                <input type="email" class="form-control" name="email" value="{{ user.email or '' }}" placeholder="voce@email.com" required>
+                <small class="text-muted">Obrigatório. É por aqui que enviamos o código para recuperar a senha.</small>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Telefone</label>
+                    <input type="tel" class="form-control" name="phone" value="{{ user.phone or '' }}" placeholder="+351...">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Cidade</label>
+                    <input type="text" class="form-control" name="city" value="{{ user.city or '' }}">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Data de nascimento</label>
+                    <input type="date" class="form-control" name="birth_date" value="{{ user.birth_date.isoformat() if user.birth_date else '' }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Moeda</label>
+                    <select class="form-select" name="currency">
+                        {% for code in ['EUR', 'BRL', 'USD'] %}
+                        <option value="{{ code }}" {% if (user.currency or 'EUR') == code %}selected{% endif %}>{{ code }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Ocupação</label>
+                <input type="text" class="form-control" name="occupation" value="{{ user.occupation or '' }}" placeholder="Opcional">
+            </div>
+
+            <h5 id="valores-habituais" class="mt-4 mb-2">Valores habituais</h5>
+            <p class="text-muted">Na primeira vez, o chat pergunta. Aqui você corrige. Deixe em branco para perguntar de novo.</p>
+            {% for preset in presets %}
+            <div class="mb-3">
+                <label class="form-label">{{ preset.emoji }} {{ preset.category }}</label>
+                <input type="number" class="form-control" name="preset_{{ preset.key }}" min="0" step="0.01" value="{{ '%.2f'|format(preset.amount) if preset.amount is not none else '' }}" placeholder="Ainda não definido">
+            </div>
+            {% endfor %}
 
             <button type="submit" class="btn btn-primary w-100">
                 <i class="bi bi-check"></i> Guardar Alterações

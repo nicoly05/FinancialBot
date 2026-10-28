@@ -1,23 +1,44 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
-from supabase import create_client
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate, upgrade
 from sqlalchemy import inspect, text
 import bcrypt
+import hashlib
 import json
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, date
 from config import Config
 import requests
+from planning_engine import compute_financial_plan
+from chat_engine import fold as fold_chat
+from chat_engine import interpret_message
+from mailer import send_password_reset
 from werkzeug.utils import secure_filename
 from datetime import datetime
+
+
+def _get_supabase():
+    url = Config.SUPABASE_URL
+    key = Config.SUPABASE_KEY
+    if not url or not key:
+        return None
+    try:
+        from supabase import create_client
+        return create_client(url, key)
+    except Exception as exc:
+        print(f'Supabase indisponível: {exc}')
+        return None
 
 
 def upload_image_to_supabase(file, folder):
     """Upload de imagem para Supabase Storage"""
     try:
+        client = _get_supabase()
+        if client is None:
+            return None
         filename = secure_filename(file.filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         unique_filename = f"{timestamp}_{filename}"
@@ -28,7 +49,7 @@ def upload_image_to_supabase(file, folder):
 
         # Upload para Supabase - bucket correto é "image" (não "images")
         bucket_name = "image"
-        response = supabase.storage.from_(bucket_name).upload(
+        response = client.storage.from_(bucket_name).upload(
             f"{folder}/{unique_filename}",
             file_content
         )
@@ -63,9 +84,6 @@ def allow_local_frontend_requests(response):
         response.headers['Vary'] = 'Origin'
     return response
 
-# Supabase client
-supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
-
 # SQLAlchemy / Migrations setup
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -87,7 +105,9 @@ def _ensure_financial_planning_columns():
             'name': 'VARCHAR(200)',
             'observation': 'TEXT',
             'plan_date': 'DATE',
-            'is_favorite': 'BOOLEAN DEFAULT 0'
+            'is_favorite': 'BOOLEAN DEFAULT 0',
+            'organization_notes': 'TEXT',
+            'plan_result': 'TEXT',
         }
 
         for column_name, column_sql in missing_columns.items():
@@ -97,10 +117,31 @@ def _ensure_financial_planning_columns():
         db.session.commit()
 
 
+def _ensure_user_columns():
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    if 'user' not in tables:
+        return
+    existing = {column['name'] for column in inspector.get_columns('user')}
+    missing = {
+        'full_name': 'VARCHAR(120)',
+        'phone': 'VARCHAR(40)',
+        'birth_date': 'DATE',
+        'city': 'VARCHAR(80)',
+        'currency': 'VARCHAR(8)',
+        'occupation': 'VARCHAR(80)',
+    }
+    for name, column_sql in missing.items():
+        if name not in existing:
+            db.session.execute(text(f'ALTER TABLE user ADD COLUMN {name} {column_sql}'))
+    db.session.commit()
+
+
 def init_database():
     with app.app_context():
         db.create_all()
         _ensure_financial_planning_columns()
+        _ensure_user_columns()
         migrations_dir = os.path.join(BASE_DIR, 'migrations')
         if os.path.isdir(migrations_dir):
             try:
@@ -137,8 +178,36 @@ class User(UserMixin, db.Model):
     security_answer = db.Column(db.LargeBinary, nullable=False)
     categories_configured = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    email = db.Column(db.String(120), nullable=True)
+    email = db.Column(db.String(120), unique=True, nullable=True)
     profile_photo = db.Column(db.String(255), nullable=True)  # URL da foto de perfil
+    full_name = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
+    birth_date = db.Column(db.Date, nullable=True)
+    city = db.Column(db.String(80), nullable=True)
+    currency = db.Column(db.String(8), default='EUR')
+    occupation = db.Column(db.String(80), nullable=True)
+
+
+class UserPreset(db.Model):
+    __tablename__ = 'user_preset'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    key = db.Column(db.String(40), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    __table_args__ = (db.UniqueConstraint('user_id', 'key', name='uq_user_preset_key'),)
+
+
+class PasswordResetCode(db.Model):
+    __tablename__ = 'password_reset_code'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    code_hash = db.Column(db.String(128), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    attempts = db.Column(db.Integer, default=0, nullable=False)
+    used = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
 
 class Session(db.Model):
@@ -311,6 +380,8 @@ class FinancialPlanning(db.Model):
     # Dreams and priorities
     priorities = db.Column(db.Text, default='')  # JSON string of priorities
     dreams = db.Column(db.Text, default='')  # JSON string of dream answers
+    organization_notes = db.Column(db.Text, default='')
+    plan_result = db.Column(db.Text, default='')
 
     # Calculated distribution
     security_percentage = db.Column(db.Float, default=15.0)
@@ -395,55 +466,190 @@ def _parse_plan_date(raw_value):
             return date.today()
 
 
+def _form_to_plan_payload(form):
+    def fnum(name, default=0.0):
+        try:
+            return float(form.get(name) or default)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def inum(name, default=0):
+        try:
+            return int(float(form.get(name) or default))
+        except (TypeError, ValueError):
+            return int(default)
+
+    priorities = []
+    for candidate in (form.get('priorities_json') or '', form.get('priorities') or ''):
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, list):
+            priorities = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    priorities.append(str(item.get('key') or item.get('label') or ''))
+                else:
+                    priorities.append(str(item))
+            priorities = [item for item in priorities if item]
+            break
+
+    labels = []
+    raw_labels = form.get('priority_labels_json') or ''
+    if raw_labels:
+        try:
+            parsed_labels = json.loads(raw_labels)
+            if isinstance(parsed_labels, list):
+                labels = [str(item) for item in parsed_labels if str(item).strip()]
+        except Exception:
+            labels = []
+
+    goals = []
+    try:
+        parsed_goals = json.loads(form.get('goals_json') or '[]')
+        if isinstance(parsed_goals, list):
+            goals = parsed_goals
+    except Exception:
+        goals = []
+
+    names = form.getlist('expense_name[]')
+    amounts = form.getlist('expense_amount[]')
+    categories = form.getlist('expense_category[]')
+    expenses = []
+    for index, name in enumerate(names):
+        name = (name or '').strip()
+        if not name:
+            continue
+        try:
+            amount = float(amounts[index] or 0)
+        except (ValueError, IndexError):
+            amount = 0
+        if amount <= 0:
+            continue
+        expenses.append({
+            'name': name,
+            'amount': amount,
+            'category': categories[index] if index < len(categories) else '',
+        })
+
+    has_debts = form.get('has_debts') == 'on'
+    has_investments = form.get('has_investments') == 'on'
+    return {
+        'monthly_income': fnum('monthly_income'),
+        'other_income': fnum('other_income'),
+        'income_type': form.get('income_type') or 'fixa',
+        'dependents': inum('dependents'),
+        'shares_expenses': form.get('shares_expenses') == 'on',
+        'has_debts': has_debts,
+        'total_debt': fnum('total_debt') if has_debts else 0,
+        'monthly_debt_payment': fnum('monthly_debt_payment') if has_debts else 0,
+        'urgent_debt': form.get('urgent_debt') == 'on',
+        'emergency_fund_status': form.get('emergency_fund_status') or 'none',
+        'emergency_fund_amount': fnum('emergency_fund_amount'),
+        'has_investments': has_investments,
+        'investment_amount': fnum('investment_amount') if has_investments else 0,
+        'monthly_investment': fnum('monthly_investment') if has_investments else 0,
+        'lifestyle_budget': fnum('lifestyle_budget'),
+        'priorities': priorities,
+        'priority_labels': labels,
+        'dreams': form.get('dreams') or '',
+        'organization_notes': form.get('organization_notes') or '',
+        'observation': form.get('plan_observation') or '',
+        'goals': goals,
+        'expenses': expenses,
+        'current_age': inum('current_age', 30),
+        'retirement_age': inum('retirement_age', 65),
+    }
+
+
+def _payload_from_planning(planning):
+    expenses = []
+    goals = []
+    try:
+        for expense in FinancialExpense.query.filter_by(planning_id=planning.id).all():
+            expenses.append({
+                'name': expense.name,
+                'amount': expense.amount,
+                'category': expense.category,
+            })
+        for goal in FinancialGoal.query.filter_by(planning_id=planning.id).all():
+            goals.append({
+                'name': goal.name,
+                'category': goal.category,
+                'amount': goal.target_amount,
+                'current_amount': goal.current_amount or 0,
+                'deadline': 12,
+            })
+    except Exception:
+        pass
+
+    priorities = []
+    if planning.priorities:
+        try:
+            parsed = json.loads(planning.priorities)
+            if isinstance(parsed, list):
+                priorities = parsed
+        except Exception:
+            priorities = []
+
+    return {
+        # monthly_income já foi gravado como renda total (principal + outras).
+        'monthly_income': planning.monthly_income or 0,
+        'other_income': 0,
+        'income_type': planning.income_type,
+        'dependents': planning.dependents or 0,
+        'shares_expenses': bool(planning.shares_expenses),
+        'has_debts': bool(planning.has_debts),
+        'total_debt': planning.total_debt or 0,
+        'monthly_debt_payment': planning.monthly_debt_payment or 0,
+        'urgent_debt': bool(planning.urgent_debt),
+        'emergency_fund_status': planning.emergency_fund_status,
+        'emergency_fund_amount': planning.emergency_fund_amount or 0,
+        'lifestyle_budget': planning.lifestyle_budget or 0,
+        'priorities': priorities,
+        'dreams': planning.dreams or '',
+        'organization_notes': getattr(planning, 'organization_notes', '') or '',
+        'observation': planning.observation or '',
+        'goals': goals,
+        'expenses': expenses,
+        'current_age': planning.current_age or 30,
+        'retirement_age': planning.retirement_age or 65,
+    }
+
+
+def _ensure_summary_shape(summary):
+    summary = dict(summary or {})
+    summary.setdefault('ai_summary', None)
+    summary.setdefault('explanations', [])
+    summary.setdefault('alerts', [])
+    summary.setdefault('boxes', [])
+    summary.setdefault('checklist', [])
+    summary.setdefault('signals', [])
+    summary.setdefault('headline', '')
+    summary.setdefault('read_excerpt', '')
+    summary.setdefault('selected_priorities', [])
+    summary.setdefault('priorities_count', len(summary.get('selected_priorities') or []))
+    summary.setdefault('main_priority', '')
+    return summary
+
+
 def _build_planning_summary(planning):
     if not planning:
         return None
 
-    monthly_income = float(planning.monthly_income or 0)
-    
-    # Generate AI summary
-    ai_summary = _generate_ai_summary(planning)
-    
-    # Parse priorities for display
-    selected_priorities = []
-    if planning.priorities:
+    stored_raw = getattr(planning, 'plan_result', None)
+    if stored_raw:
         try:
-            selected_priorities = json.loads(planning.priorities)
-        except:
+            stored = json.loads(stored_raw)
+            if isinstance(stored, dict) and 'security_percentage' in stored:
+                return _ensure_summary_shape(stored)
+        except Exception:
             pass
-    
-    # Build category list based on priorities
-    priority_display_names = {
-        'emergency': '🛡️ Reserva de Emergência',
-        'retirement': '👴 Aposentadoria',
-        'investments': '📈 Investimentos',
-        'house': '🏠 Comprar Casa',
-        'car': '🚗 Comprar Carro',
-        'travel': '✈️ Viagens',
-        'education': '📚 Cursos/Faculdade',
-        'business': '💼 Negócio Próprio',
-        'wedding': '💒 Casamento',
-        'independence': '🚀 Independência Financeira'
-    }
-    
-    display_categories = [priority_display_names.get(p, p) for p in selected_priorities]
-    
-    return {
-        'monthly_income': monthly_income,
-        'security_amount': monthly_income * (planning.security_percentage / 100),
-        'fixed_expenses_amount': monthly_income * (planning.fixed_expenses_percentage / 100),
-        'personal_investment_amount': monthly_income * (planning.personal_investment_percentage / 100),
-        'travel_amount': monthly_income * (planning.travel_percentage / 100),
-        'big_goals_amount': monthly_income * (planning.big_goals_percentage / 100),
-        'security_percentage': planning.security_percentage,
-        'fixed_expenses_percentage': planning.fixed_expenses_percentage,
-        'personal_investment_percentage': planning.personal_investment_percentage,
-        'travel_percentage': planning.travel_percentage,
-        'big_goals_percentage': planning.big_goals_percentage,
-        'ai_summary': ai_summary,
-        'selected_priorities': display_categories,
-        'priorities_count': len(selected_priorities)
-    }
+
+    return _ensure_summary_shape(compute_financial_plan(_payload_from_planning(planning)))
 
 
 def _import_planning_checklist(planning):
@@ -923,6 +1129,274 @@ def login():
     return render_template('login.html')
 
 
+PRESET_CATALOG = (
+    {'key': 'salario', 'label': 'Recebi salário', 'tx_type': 'income', 'category': 'Salário', 'emoji': '💰'},
+    {'key': 'mercado', 'label': 'Mercado', 'tx_type': 'expense', 'category': 'Mercado', 'emoji': '🛒'},
+    {'key': 'transporte', 'label': 'Transporte', 'tx_type': 'expense', 'category': 'Transporte', 'emoji': '🚌'},
+    {'key': 'cafe', 'label': 'Café', 'tx_type': 'expense', 'category': 'Café', 'emoji': '☕'},
+)
+PRESET_BY_KEY = {item['key']: item for item in PRESET_CATALOG}
+RESET_CODE_MINUTES = 15
+RESET_MAX_SENDS = 3
+RESET_MAX_ATTEMPTS = 5
+
+
+def _normalize_email(value):
+    return (value or '').strip().lower()
+
+
+def _valid_email(value):
+    return bool(re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value or ''))
+
+
+def _currency_symbol(user=None):
+    code = ((getattr(user, 'currency', None) or 'EUR') if user else 'EUR').upper()
+    return {'EUR': '€', 'BRL': 'R$', 'USD': '$'}.get(code, '€')
+
+
+def _hash_reset_code(code):
+    secret = app.config.get('SECRET_KEY') or 'dev'
+    return hashlib.sha256(f'{secret}:{code}'.encode()).hexdigest()
+
+
+def _request_reset_code(email):
+    if not _valid_email(email):
+        return 'invalid'
+    window_start = datetime.now() - timedelta(minutes=RESET_CODE_MINUTES)
+    recent = PasswordResetCode.query.filter(
+        PasswordResetCode.email == email,
+        PasswordResetCode.created_at >= window_start,
+    ).count()
+    if recent >= RESET_MAX_SENDS:
+        return 'rate_limited'
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    code = f'{secrets.randbelow(1000000):06d}'
+    row = PasswordResetCode(
+        email=email,
+        user_id=user.id if user else None,
+        code_hash=_hash_reset_code(code) if user else 'unused',
+        expires_at=datetime.now() + timedelta(minutes=RESET_CODE_MINUTES),
+        attempts=0,
+        used=False,
+    )
+    db.session.add(row)
+    db.session.commit()
+    if user:
+        send_password_reset(user.email, user.username, code)
+    return 'sent'
+
+
+def _verify_reset_code(email, code):
+    row = PasswordResetCode.query.filter_by(email=email, used=False).order_by(
+        PasswordResetCode.id.desc()
+    ).first()
+    if not row or not row.user_id or row.expires_at < datetime.now():
+        return False
+    row.attempts = (row.attempts or 0) + 1
+    if row.attempts > RESET_MAX_ATTEMPTS:
+        row.used = True
+        db.session.commit()
+        return False
+    if row.code_hash != _hash_reset_code(code):
+        db.session.commit()
+        return False
+    row.used = True
+    db.session.commit()
+    session['reset_user_id'] = row.user_id
+    session['reset_until'] = (datetime.now() + timedelta(minutes=10)).isoformat()
+    return True
+
+
+def _reset_session_user():
+    user_id = session.get('reset_user_id')
+    until = session.get('reset_until')
+    if not user_id or not until:
+        return None
+    try:
+        if datetime.fromisoformat(until) < datetime.now():
+            session.pop('reset_user_id', None)
+            session.pop('reset_until', None)
+            return None
+    except ValueError:
+        return None
+    return db.session.get(User, int(user_id))
+
+
+def _preset_map(user_id):
+    rows = UserPreset.query.filter_by(user_id=user_id).all()
+    return {row.key: row for row in rows}
+
+
+def _preset_rows(user_id):
+    saved = _preset_map(user_id)
+    rows = []
+    for spec in PRESET_CATALOG:
+        current = saved.get(spec['key'])
+        rows.append({
+            **spec,
+            'amount': current.amount if current else None,
+            'message': f'__preset__:{spec["key"]}',
+        })
+    return rows
+
+
+def _quick_suggestions(user_id):
+    chips = []
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    for row in _preset_rows(user_id):
+        label = f'{row["emoji"]} {row["label"]}'
+        if row['amount'] is not None:
+            label += f' · {symbol}{row["amount"]:.2f}'
+        chips.append({'label': label, 'message': row['message']})
+    chips.append({'label': 'Desfazer', 'message': 'desfazer'})
+    return chips
+
+
+def _save_preset(user_id, key, amount):
+    spec = PRESET_BY_KEY.get(key)
+    if not spec or amount is None or amount <= 0:
+        return None
+    row = UserPreset.query.filter_by(user_id=user_id, key=key).first()
+    if row:
+        row.amount = float(amount)
+        row.updated_at = datetime.now()
+    else:
+        row = UserPreset(user_id=user_id, key=key, amount=float(amount))
+        db.session.add(row)
+    db.session.flush()
+    return row
+
+
+def _save_presets_from_form(user_id, form):
+    for spec in PRESET_CATALOG:
+        raw = (form.get(f'preset_{spec["key"]}') or '').strip()
+        existing = UserPreset.query.filter_by(user_id=user_id, key=spec['key']).first()
+        if not raw:
+            if existing:
+                db.session.delete(existing)
+            continue
+        try:
+            amount = float(raw.replace(',', '.'))
+        except ValueError:
+            continue
+        if amount <= 0:
+            continue
+        _save_preset(user_id, spec['key'], amount)
+
+
+def _parse_user_amount(text):
+    match = re.search(r'(\d+(?:[.,]\d{1,2})?)', fold_chat(text or ''))
+    if not match:
+        return None
+    raw = match.group(1)
+    if ',' in raw and '.' not in raw:
+        raw = raw.replace(',', '.')
+    try:
+        value = round(float(raw), 2)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _match_preset_edit(message):
+    text = fold_chat(message or '')
+    patterns = (
+        r'(?:alterar|mudar|atualizar|editar|corrigir)\s+(?:o\s+|a\s+)?(?:valor\s+(?:do|da|de)\s+)?([a-z]+)\s+(?:para|pra)\s+(\d+(?:[.,]\d{1,2})?)',
+        r'(?:o|a)\s+([a-z]+)\s+(?:agora\s+)?(?:custa|fica|vale)\s+(\d+(?:[.,]\d{1,2})?)',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        key = _preset_key_from_word(match.group(1))
+        amount = _parse_user_amount(match.group(2))
+        if key and amount:
+            return key, amount
+    return None
+
+
+def _preset_key_from_word(word):
+    folded = fold_chat(word)
+    aliases = {
+        'salario': 'salario', 'salário': 'salario', 'renda': 'salario',
+        'mercado': 'mercado', 'supermercado': 'mercado',
+        'transporte': 'transporte', 'uber': 'transporte', 'onibus': 'transporte',
+        'cafe': 'cafe', 'café': 'cafe',
+    }
+    if folded in aliases:
+        return aliases[folded]
+    for spec in PRESET_CATALOG:
+        if folded in fold_chat(spec['category']) or folded in fold_chat(spec['label']):
+            return spec['key']
+    return None
+
+
+def _preset_confirm(user_id, user_session, spec, amount, intro):
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    _save_pending(user_session, {
+        'kind': 'confirm',
+        'transactions': [{
+            'type': spec['tx_type'],
+            'amount': amount,
+            'category': spec['category'],
+            'date_hint': 'today',
+        }],
+    })
+    db.session.commit()
+    kind = 'receita' if spec['tx_type'] == 'income' else 'despesa'
+    return _chat_result(
+        f'{intro}\n\nPosso registrar uma {kind} de {symbol}{amount:.2f} em {spec["category"]}?',
+        CONFIRM_SUGGESTIONS,
+        user_id=user_id,
+    )
+
+
+def _start_preset(user_id, user_session, key):
+    spec = PRESET_BY_KEY.get(key)
+    if not spec:
+        return _chat_result('Não conheço esse atalho.', user_id=user_id)
+    saved = _preset_map(user_id).get(key)
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    if not saved:
+        _save_pending(user_session, {'kind': 'ask_preset_amount', 'key': key})
+        db.session.commit()
+        return _chat_result(
+            f'Ainda não guardei um valor habitual para {spec["category"]}. '
+            f'Quanto você costuma usar? O café, por exemplo, pode ser {symbol}2 — me diga o seu número.',
+            user_id=user_id,
+        )
+    return _preset_confirm(
+        user_id,
+        user_session,
+        spec,
+        saved.amount,
+        f'Vou usar o valor habitual de {spec["category"]}: {symbol}{saved.amount:.2f}. '
+        'Se mudou, escreva "alterar café para 3" (trocando o nome e o valor).',
+    )
+
+
+def _answer_preset_amount(message, user_id, user_session, pending, interpreted):
+    if interpreted.get('kind') == 'transactions' and interpreted['transactions'] and interpreted['transactions'][0].get('category'):
+        _save_pending(user_session, None)
+        return None
+    amount = _parse_user_amount(message)
+    spec = PRESET_BY_KEY.get(pending.get('key'))
+    if not spec or not amount:
+        return _chat_result(
+            'Não entendi o valor. Responda só com o número que você costuma usar, por exemplo 2.',
+            user_id=user_id,
+        )
+    _save_preset(user_id, spec['key'], amount)
+    symbol = _currency_symbol(db.session.get(User, user_id))
+    return _preset_confirm(
+        user_id,
+        user_session,
+        spec,
+        amount,
+        f'Guardei {symbol}{amount:.2f} como valor habitual de {spec["category"]}. Dá para mudar no perfil ou por aqui.',
+    )
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -932,12 +1406,23 @@ def register():
         security_question = request.form.get('security_question')
         security_answer = request.form.get('security_answer')
 
+        email = _normalize_email(request.form.get('email'))
+        full_name = (request.form.get('full_name') or '').strip()
+
         if password != confirm_password:
             flash('As palavras-passe não coincidem', 'error')
             return render_template('register.html')
 
+        if not _valid_email(email):
+            flash('Informe um e-mail válido. Ele é obrigatório para recuperar a senha.', 'error')
+            return render_template('register.html')
+
         if User.query.filter_by(username=username).first():
             flash('Este nome de utilizador já existe', 'error')
+            return render_template('register.html')
+
+        if User.query.filter(db.func.lower(User.email) == email).first():
+            flash('Este e-mail já está associado a outra conta.', 'error')
             return render_template('register.html')
 
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -948,7 +1433,10 @@ def register():
             password=hashed_password,
             security_question=security_question,
             security_answer=hashed_answer,
-            categories_configured=False
+            categories_configured=False,
+            email=email,
+            full_name=full_name or None,
+            currency=(request.form.get('currency') or 'EUR').upper(),
         )
 
         db.session.add(user)
@@ -961,26 +1449,46 @@ def register():
 
 @app.route('/recover', methods=['GET', 'POST'])
 def recover():
+    step = 'email'
+    if _reset_session_user():
+        step = 'password'
     if request.method == 'POST':
-        username = request.form.get('username')
-        security_answer = request.form.get('security_answer')
-        new_password = request.form.get('new_password')
-
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            flash('Utilizador não encontrado', 'error')
-            return render_template('recover.html')
-
-        if bcrypt.checkpw(security_answer.lower().encode('utf-8'), user.security_answer):
-            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-            user.password = hashed_password
+        action = request.form.get('action') or 'send'
+        if action == 'send':
+            email = _normalize_email(request.form.get('email'))
+            status = _request_reset_code(email)
+            if status == 'rate_limited':
+                flash('Espere alguns minutos antes de pedir outro código.', 'error')
+            elif not _valid_email(email):
+                flash('Informe um e-mail válido.', 'error')
+            else:
+                flash('Se este e-mail estiver cadastrado, enviamos um código de 6 dígitos. Ele expira em 15 minutos.', 'success')
+                step = 'code'
+                return render_template('recover.html', step='code', email=email)
+        elif action == 'verify':
+            email = _normalize_email(request.form.get('email'))
+            code = (request.form.get('code') or '').strip()
+            if _verify_reset_code(email, code):
+                return render_template('recover.html', step='password', email=email)
+            flash('Código inválido ou expirado.', 'error')
+            return render_template('recover.html', step='code', email=email)
+        elif action == 'reset':
+            user = _reset_session_user()
+            new_password = request.form.get('new_password') or ''
+            confirm = request.form.get('confirm_password') or ''
+            if not user:
+                flash('A verificação expirou. Peça um novo código.', 'error')
+                return render_template('recover.html', step='email')
+            if len(new_password) < 6 or new_password != confirm:
+                flash('A nova senha precisa coincidir e ter pelo menos 6 caracteres.', 'error')
+                return render_template('recover.html', step='password')
+            user.password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
             db.session.commit()
-            flash('Palavra-passe redefinida com sucesso!', 'success')
+            session.pop('reset_user_id', None)
+            session.pop('reset_until', None)
+            flash('Senha redefinida. Entre com a nova senha.', 'success')
             return redirect(url_for('login'))
-        else:
-            flash('Resposta à pergunta de segurança incorreta', 'error')
-
-    return render_template('recover.html')
+    return render_template('recover.html', step=step, email=request.args.get('email', ''))
 
 
 @app.route('/logout')
@@ -994,10 +1502,17 @@ def logout():
 @login_required
 def profile():
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = _normalize_email(request.form.get('email'))
         profile_photo = request.form.get('profile_photo')
 
-        # Handle file upload to Supabase
+        if not _valid_email(email):
+            flash('O e-mail é obrigatório e precisa ser válido.', 'error')
+            return redirect(url_for('profile'))
+        taken = User.query.filter(db.func.lower(User.email) == email, User.id != current_user.id).first()
+        if taken:
+            flash('Este e-mail já está associado a outra conta.', 'error')
+            return redirect(url_for('profile'))
+
         image_file = request.files.get('image_file')
         if image_file and image_file.filename:
             image_url = upload_image_to_supabase(image_file, 'profile')
@@ -1005,14 +1520,21 @@ def profile():
                 profile_photo = image_url
 
         current_user.email = email
+        current_user.full_name = (request.form.get('full_name') or '').strip() or None
+        current_user.phone = (request.form.get('phone') or '').strip() or None
+        current_user.city = (request.form.get('city') or '').strip() or None
+        current_user.occupation = (request.form.get('occupation') or '').strip() or None
+        current_user.currency = (request.form.get('currency') or 'EUR').upper()
+        birth_raw = (request.form.get('birth_date') or '').strip()
+        current_user.birth_date = _parse_plan_date(birth_raw) if birth_raw else None
         if profile_photo:
             current_user.profile_photo = profile_photo
-
+        _save_presets_from_form(current_user.id, request.form)
         db.session.commit()
-        flash('Perfil atualizado com sucesso!', 'success')
+        flash('Perfil e preferências atualizados.', 'success')
         return redirect(url_for('profile'))
 
-    return render_template('profile.html', user=current_user)
+    return render_template('profile.html', user=current_user, presets=_preset_rows(current_user.id))
 
 
 @app.route('/planning', methods=['GET', 'POST'])
@@ -1020,28 +1542,28 @@ def profile():
 def planning():
     if request.method == 'POST':
         try:
-            monthly_income = float(request.form.get('monthly_income', 0))
+            monthly_income = float(request.form.get('monthly_income') or 0)
             income_type = request.form.get('income_type', 'fixa')
-            other_income = float(request.form.get('other_income', 0))
-            dependents = int(request.form.get('dependents', 0))
+            other_income = float(request.form.get('other_income') or 0)
+            dependents = int(request.form.get('dependents') or 0)
             shares_expenses = request.form.get('shares_expenses') == 'on'
 
             has_debts = request.form.get('has_debts') == 'on'
-            total_debt = float(request.form.get('total_debt', 0)) if has_debts else 0
-            monthly_debt_payment = float(request.form.get('monthly_debt_payment', 0)) if has_debts else 0
+            total_debt = float(request.form.get('total_debt') or 0) if has_debts else 0
+            monthly_debt_payment = float(request.form.get('monthly_debt_payment') or 0) if has_debts else 0
             urgent_debt = request.form.get('urgent_debt') == 'on'
 
             emergency_fund_status = request.form.get('emergency_fund_status', 'none')
-            emergency_fund_amount = float(request.form.get('emergency_fund_amount', 0))
+            emergency_fund_amount = float(request.form.get('emergency_fund_amount') or 0)
 
             has_investments = request.form.get('has_investments') == 'on'
-            investment_amount = float(request.form.get('investment_amount', 0)) if has_investments else 0
-            monthly_investment = float(request.form.get('monthly_investment', 0)) if has_investments else 0
+            investment_amount = float(request.form.get('investment_amount') or 0) if has_investments else 0
+            monthly_investment = float(request.form.get('monthly_investment') or 0) if has_investments else 0
             has_retirement = request.form.get('has_retirement') == 'on'
-            current_age = int(request.form.get('current_age', 30))
-            retirement_age = int(request.form.get('retirement_age', 65))
+            current_age = int(request.form.get('current_age') or 30)
+            retirement_age = int(request.form.get('retirement_age') or 65)
 
-            lifestyle_budget = float(request.form.get('lifestyle_budget', 0))
+            lifestyle_budget = float(request.form.get('lifestyle_budget') or 0)
             priorities = request.form.get('priorities', '')
             dreams = request.form.get('dreams', '')
             plan_name = (request.form.get('plan_name') or '').strip() or f'Planejamento {datetime.now().strftime("%d/%m/%Y")}'
@@ -1051,85 +1573,26 @@ def planning():
             add_mandatory_bills = request.form.get('add_mandatory_bills') == 'on'
 
             total_income = monthly_income + other_income
+            payload = _form_to_plan_payload(request.form)
+            summary = compute_financial_plan(payload)
+            selected_priorities = payload['priorities']
+            goals_data = [goal.get('category') for goal in payload['goals'] if isinstance(goal, dict)]
+            security_percentage = summary['security_percentage']
+            fixed_expenses_percentage = summary['fixed_expenses_percentage']
+            personal_investment_percentage = summary['personal_investment_percentage']
+            travel_percentage = summary['travel_percentage']
+            big_goals_percentage = summary['big_goals_percentage']
+            if summary.get('total_income'):
+                total_income = summary['total_income']
+            priorities = json.dumps(selected_priorities, ensure_ascii=False)
+            dreams = payload['dreams']
 
-            # Capturar prioridades selecionadas e objetivos
-            try:
-                priorities_json = request.form.get('priorities_json', '')
-                if priorities_json:
-                    selected_priorities = json.loads(priorities_json)
-                else:
-                    selected_priorities = []
-            except:
-                selected_priorities = []
-            
-            goals_data = request.form.getlist('goal_category') if 'goal_category' in request.form else []
-            
-            # Calcular distribuição baseada nas prioridades e objetivos
-            priority_weights = {
-                'emergency': 0.25,    # Reserva de emergência
-                'retirement': 0.20,    # Aposentadoria
-                'investments': 0.15,   # Investimentos
-                'house': 0.10,        # Comprar casa
-                'car': 0.05,          # Comprar carro
-                'travel': 0.05,        # Viajar
-                'education': 0.05,     # Cursos/Faculdade
-                'business': 0.05,      # Negócio próprio
-                'wedding': 0.03,      # Casamento
-                'independence': 0.07   # Independência financeira
-            }
-            
-            # Calcular pesos baseados nas prioridades selecionadas
-            total_priority_weight = sum(priority_weights.get(p, 0) for p in selected_priorities)
-            
-            # Se não tiver prioridades selecionadas, usar lógica padrão
-            if total_priority_weight == 0:
-                if urgent_debt or total_debt > 0:
-                    security_percentage = 5.0
-                    fixed_expenses_percentage = 40.0
-                    personal_investment_percentage = 5.0
-                    travel_percentage = 5.0
-                    big_goals_percentage = 45.0
-                elif emergency_fund_status in ['none', 'less_1_month']:
-                    security_percentage = 25.0
-                    fixed_expenses_percentage = 50.0
-                    personal_investment_percentage = 10.0
-                    travel_percentage = 5.0
-                    big_goals_percentage = 10.0
-                else:
-                    security_percentage = 15.0
-                    fixed_expenses_percentage = 50.0
-                    personal_investment_percentage = 15.0
-                    travel_percentage = 10.0
-                    big_goals_percentage = 10.0
-            else:
-                # Normalizar pesos para 100%
-                weight_scale = 100 / total_priority_weight if total_priority_weight > 0 else 1
-                
-                # Calcular percentuais baseados nas prioridades
-                security_percentage = priority_weights.get('emergency', 0) * weight_scale
-                big_goals_percentage = sum(priority_weights.get(p, 0) for p in selected_priorities if p in ['house', 'car', 'travel', 'education', 'business', 'wedding', 'independence']) * weight_scale
-                personal_investment_percentage = priority_weights.get('investments', 0) * weight_scale
-                travel_percentage = priority_weights.get('travel', 0) * weight_scale
-                fixed_expenses_percentage = 100 - (security_percentage + big_goals_percentage + personal_investment_percentage + travel_percentage)
-                
-                # Ajustar se necessário
-                if fixed_expenses_percentage < 20:
-                    fixed_expenses_percentage = 20
-                    security_percentage = security_percentage * 0.8
-                    big_goals_percentage = big_goals_percentage * 0.8
-
-            # Criar categorias baseadas nas prioridades e objetivos
-            try:
-                priorities_json = request.form.get('priorities_json', '')
-                if priorities_json:
-                    selected_priorities = json.loads(priorities_json)
-                else:
-                    selected_priorities = []
-            except:
-                selected_priorities = []
-            
-            goals_data = request.form.getlist('goal_category') if 'goal_category' in request.form else []
-            _create_categories_from_priorities(current_user.id, selected_priorities, goals_data, total_income)
+            _create_categories_from_priorities(
+                current_user.id,
+                json.dumps(selected_priorities, ensure_ascii=False),
+                goals_data,
+                total_income,
+            )
 
             if save_as_favorite:
                 FinancialPlanning.query.filter_by(user_id=current_user.id).update({'is_favorite': False})
@@ -1160,6 +1623,8 @@ def planning():
                 lifestyle_budget=lifestyle_budget,
                 priorities=priorities,
                 dreams=dreams,
+                organization_notes=payload['organization_notes'],
+                plan_result=json.dumps(summary, ensure_ascii=False),
                 security_percentage=security_percentage,
                 fixed_expenses_percentage=fixed_expenses_percentage,
                 personal_investment_percentage=personal_investment_percentage,
@@ -1168,6 +1633,25 @@ def planning():
             )
 
             db.session.add(planning)
+            db.session.flush()
+            for expense in payload['expenses']:
+                db.session.add(FinancialExpense(
+                    user_id=current_user.id,
+                    planning_id=planning.id,
+                    name=expense['name'],
+                    category=expense.get('category') or 'outros',
+                    amount=expense['amount'],
+                ))
+            for goal in summary.get('goals') or []:
+                db.session.add(FinancialGoal(
+                    user_id=current_user.id,
+                    planning_id=planning.id,
+                    category=goal.get('bucket') or goal.get('category') or 'big_goals',
+                    name=goal['name'],
+                    target_amount=goal.get('amount') or 0,
+                    current_amount=goal.get('current') or 0,
+                    monthly_contribution=goal.get('monthly') or 0,
+                ))
             db.session.commit()
 
             # Create mandatory bills if requested
@@ -1221,6 +1705,8 @@ def planning():
             else:
                 flash('Planejamento salvo com sucesso!', 'success')
 
+            if request.form.get('as_json') == '1':
+                return jsonify({'success': True, 'id': planning.id, 'planning_data': summary})
             return redirect(url_for('planning'))
 
         except Exception as e:
@@ -1312,6 +1798,7 @@ def planning_detail(planning_id):
         return jsonify({'error': 'Planejamento não encontrado'}), 404
 
     planning_data = _build_planning_summary(planning)
+    checklist = planning_data.get('checklist') or []
     return jsonify({
         'id': planning.id,
         'name': planning.name,
@@ -1319,15 +1806,7 @@ def planning_detail(planning_id):
         'plan_date': planning.plan_date.isoformat() if planning.plan_date else None,
         'is_favorite': planning.is_favorite,
         'planning_data': planning_data,
-        'checklist': [
-            {'label': 'Separar €%.2f para segurança/futuro' % planning_data['security_amount'], 'completed': False},
-            {'label': 'Pagar gastos fixos (€%.2f)' % planning_data['fixed_expenses_amount'], 'completed': False},
-            {'label': 'Separar €%.2f para investimento pessoal' % planning_data['personal_investment_amount'], 'completed': False},
-            {'label': 'Separar €%.2f para viagens' % planning_data['travel_amount'], 'completed': False},
-            {'label': 'Separar €%.2f para grandes objetivos' % planning_data['big_goals_amount'], 'completed': False},
-            {'label': 'Atualizar progresso das metas', 'completed': False},
-            {'label': 'Revisar gastos do mês', 'completed': False},
-        ],
+        'checklist': [{'label': item, 'completed': False} for item in checklist],
     })
 
 
@@ -1353,6 +1832,14 @@ def import_planning_checklist(planning_id):
 
 
 
+
+
+@app.route('/api/planning/preview', methods=['POST'])
+@login_required
+def preview_planning():
+    payload = _form_to_plan_payload(request.form)
+    summary = compute_financial_plan(payload)
+    return jsonify({'success': True, 'planning_data': summary})
 
 
 @app.route('/wishlist', methods=['GET', 'POST'])
@@ -1514,6 +2001,7 @@ def chat():
         session=user_session,
         categories=user_categories,
         chat_history=chat_history,
+        presets=_preset_rows(current_user.id),
     )
 
 
@@ -1522,17 +2010,34 @@ def chat():
 def api_chat():
     data = request.json or {}
     user_message = (data.get('message') or '').strip()
+    preset_key = (data.get('preset') or '').strip()
+    if preset_key:
+        user_message = f'__preset__:{preset_key}'
+    display_message = user_message
+    if user_message.startswith('__preset__:'):
+        spec = PRESET_BY_KEY.get(user_message.split(':', 1)[1].strip())
+        display_message = spec['label'] if spec else user_message
 
-    chat_msg = ChatHistory(user_id=current_user.id, message=user_message, sender='user', timestamp=datetime.now())
+    chat_msg = ChatHistory(user_id=current_user.id, message=display_message, sender='user', timestamp=datetime.now())
     db.session.add(chat_msg)
 
-    response = process_chat_message(user_message, current_user.id)
+    result = process_chat_message(user_message, current_user.id)
+    response_text = result['text'] if isinstance(result, dict) else str(result)
+    suggestions = result.get('suggestions', []) if isinstance(result, dict) else []
+    balances = result.get('balances') if isinstance(result, dict) else None
+    if balances is None:
+        balances = _category_balances(current_user.id)
 
-    bot_msg = ChatHistory(user_id=current_user.id, message=response, sender='bot', timestamp=datetime.now())
+    bot_msg = ChatHistory(user_id=current_user.id, message=response_text, sender='bot', timestamp=datetime.now())
     db.session.add(bot_msg)
     db.session.commit()
 
-    return jsonify({'response': response})
+    return jsonify({
+        'response': response_text,
+        'suggestions': suggestions,
+        'balances': balances,
+        'saved': result.get('saved') if isinstance(result, dict) else None,
+    })
 
 
 @app.route('/api/categories', methods=['GET'])
@@ -2036,143 +2541,375 @@ def api_update_wishlist_item(item_id):
 def inject_now():
     return {'now': datetime.now}
     
-NO_CATEGORIES_MESSAGE = (
-    "✨ Bem-vindo(a), {username}! ✨\n\n"
-    "Antes de começares, precisas de ter pelo menos uma categoria criada. É rápido:\n\n"
-    "1️⃣ Vai ao Dashboard\n"
-    "2️⃣ Na secção \"Categorias\", clica em \"Editar\"\n"
-    "3️⃣ Clica em \"Adicionar\", escolhe um nome, emoji e cor\n"
-    "4️⃣ Clica em \"Guardar\"\n\n"
-    "Depois de teres pelo menos uma categoria, volta aqui e usa o chat para registar valores:\n\n"
-    "💰 \"adicionar 50\" — para somar 50€ a uma categoria\n"
-    "➖ \"remover 20\" — para subtrair 20€ de uma categoria\n"
+CHAT_HELP_MESSAGE = (
+    "Oi! Pode falar do jeito que você anota no caderno.\n\n"
+    "• recebi 2500 de salário\n"
+    "• gastei 45 no mercado\n"
+    "• paguei 25 de transporte\n"
+    "• recebi 2500 de salário e gastei 80 no mercado\n\n"
+    "Eu mostro o que entendi e só gravo quando você confirma.\n"
+    "Os atalhos (café, mercado, transporte, salário) perguntam o seu valor na primeira vez.\n"
+    "Para mudar depois: \"alterar café para 2\" ou o perfil.\n"
+    "Para apagar o último lançamento, escreva desfazer."
 )
 
-CHAT_HELP_MESSAGE = (
-    "Já tens categorias configuradas! 🙂\n\n"
-    "Podes usar frases livres como:\n"
-    "- \"gastei 20€ em comida\"\n"
-    "- \"recebi 300 de salário\"\n"
-    "- \"ontem gastei 15€ em transportes\"\n"
-    "- \"desfazer\" / \"cancelar\" para anular a última transação\n\n"
-    "Também aceito comandos antigos: \"adicionar 50\" ou \"remover 20\"."
-)
+CONFIRM_SUGGESTIONS = [
+    {'label': 'Confirmar', 'message': 'sim', 'variant': 'primary'},
+    {'label': 'Não registrar', 'message': 'não', 'variant': 'ghost'},
+]
+
+CATEGORY_COLORS = ['#8b5cf6', '#ec4899', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#6366f1']
+
+
+def _money(amount):
+    return f'€{float(amount):.2f}'
+
+
+def _pretty_category(name):
+    return ' '.join(part[:1].upper() + part[1:] for part in (name or '').split() if part)
+
+
+def _emoji_for(name, tx_type):
+    folded = fold_chat(name)
+    table = (
+        ('salario', '💰'), ('mercado', '🛒'), ('aliment', '🍽️'), ('cafe', '☕'),
+        ('transporte', '🚌'), ('uber', '🚗'), ('aluguel', '🏠'), ('moradia', '🏠'),
+        ('lazer', '🎉'), ('saude', '🏥'), ('curso', '📚'), ('viag', '✈️'),
+        ('luz', '💡'), ('internet', '📶'),
+    )
+    for key, emoji in table:
+        if key in folded:
+            return emoji
+    return '💰' if tx_type == 'income' else '💸'
+
+
+def _category_balances(user_id):
+    categories = _get_user_categories(user_id)
+    transactions = Transaction.query.filter_by(user_id=user_id).all()
+    balances = []
+    for category in categories:
+        income = sum(item.amount for item in transactions if item.category_id == category.id and item.type == 'income')
+        expense = sum(item.amount for item in transactions if item.category_id == category.id and item.type == 'expense')
+        balances.append({
+            'name': category.name,
+            'emoji': category.emoji or '📁',
+            'color': category.color or '#8b5cf6',
+            'balance': round(income - expense, 2),
+        })
+    return balances
+
+
+def _load_pending(user_session):
+    if not user_session or not user_session.pending_intent:
+        return {}
+    try:
+        pending = json.loads(user_session.pending_intent)
+    except Exception:
+        return {}
+    return pending if isinstance(pending, dict) else {}
+
+
+def _save_pending(user_session, pending):
+    user_session.pending_intent = json.dumps(pending, ensure_ascii=False) if pending else None
+    user_session.pending_action = None
+    user_session.pending_amount = None
+    user_session.selected_category = None
+
+
+def _chat_result(text, suggestions=None, saved=None, user_id=None):
+    return {
+        'text': text,
+        'suggestions': suggestions if suggestions is not None else _quick_suggestions(user_id),
+        'saved': saved,
+        'balances': _category_balances(user_id) if user_id else [],
+    }
+
+
+def _resolve_category_loose(user_id, category_name):
+    target = fold_chat(category_name)
+    if not target:
+        return None
+    for category in _get_user_categories(user_id):
+        folded = fold_chat(category.name)
+        if folded == target or target in folded or folded in target:
+            return category
+    return None
+
+
+def _get_or_create_category(user_id, name, tx_type):
+    existing = _resolve_category_loose(user_id, name)
+    if existing:
+        return existing
+    pretty = _pretty_category(name)
+    color = CATEGORY_COLORS[len(_get_user_categories(user_id)) % len(CATEGORY_COLORS)]
+    category = Category(
+        user_id=user_id,
+        name=pretty,
+        emoji=_emoji_for(name, tx_type),
+        color=color,
+    )
+    db.session.add(category)
+    db.session.flush()
+    user_session = _get_or_create_user_session(user_id)
+    user_session.categories_configured = True
+    user = db.session.get(User, user_id)
+    if user:
+        user.categories_configured = True
+    return category
+
+
+def _timestamp_from_hint(hint):
+    if hint == 'yesterday':
+        return datetime.now() - timedelta(days=1)
+    if hint == 'tomorrow':
+        return datetime.now() + timedelta(days=1)
+    return datetime.now()
+
+
+def _describe_transactions(transactions):
+    lines = []
+    for index, tx in enumerate(transactions, start=1):
+        kind = 'Receita' if tx.get('type') == 'income' else 'Despesa'
+        category = _pretty_category(tx.get('category') or '') or 'sem categoria'
+        lines.append(f'{index}. {kind} de {_money(tx.get("amount") or 0)} em {category}')
+    return '\n'.join(lines)
+
+
+def _commit_chat_transactions(user_id, transactions):
+    saved = []
+    for tx in transactions:
+        if not tx.get('category'):
+            continue
+        category = _get_or_create_category(user_id, tx['category'], tx.get('type') or 'expense')
+        subcategory = _resolve_subcategory(category, tx.get('category') or '')
+        transaction = Transaction(
+            user_id=user_id,
+            category_id=category.id,
+            subcategory_id=subcategory.id if subcategory else None,
+            subcategory_name=subcategory.name if subcategory else None,
+            amount=float(tx['amount']),
+            type=tx.get('type') or 'expense',
+            timestamp=_timestamp_from_hint(tx.get('date_hint')),
+        )
+        db.session.add(transaction)
+        db.session.flush()
+        saved.append({
+            'id': transaction.id,
+            'type': transaction.type,
+            'amount': transaction.amount,
+            'category': category.name,
+            'emoji': category.emoji,
+        })
+    return saved
+
+
+def _category_suggestions(user_id):
+    suggestions = []
+    for category in _get_user_categories(user_id):
+        suggestions.append({'label': category.name, 'message': category.name})
+    return suggestions
 
 
 def process_chat_message(message, user_id):
-    user_categories = _get_user_categories(user_id)
-    if not user_categories:
-        user = User.query.get(user_id)
-        username = user.username if user else "utilizador"
-        return NO_CATEGORIES_MESSAGE.format(username=username)
     return handle_value_modification(message, user_id)
 
 
 def handle_value_modification(message, user_id):
     user_session = Session.query.filter_by(user_id=user_id).first() or _get_or_create_user_session(user_id)
+    pending = _load_pending(user_session)
+    raw_message = (message or '').strip()
+    if raw_message.startswith('__preset__:'):
+        return _start_preset(user_id, user_session, raw_message.split(':', 1)[1].strip())
+    edit = _match_preset_edit(raw_message)
+    if edit and not (pending.get('kind') == 'ask_preset_amount'):
+        key, amount = edit
+        spec = PRESET_BY_KEY[key]
+        _save_preset(user_id, key, amount)
+        symbol = _currency_symbol(db.session.get(User, user_id))
+        return _preset_confirm(
+            user_id,
+            user_session,
+            spec,
+            amount,
+            f'Atualizei o valor habitual de {spec["category"]} para {symbol}{amount:.2f}.',
+        )
+    interpreted = interpret_message(message or '')
+    kind = interpreted['kind']
+    if pending.get('kind') == 'ask_preset_amount' and kind not in {'reject', 'undo'}:
+        answered = _answer_preset_amount(message, user_id, user_session, pending, interpreted)
+        if answered is not None:
+            return answered
+        pending = _load_pending(user_session)
+    user_categories = _get_user_categories(user_id)
 
-    if not message:
-        return CHAT_HELP_MESSAGE
+    if message and message.isdigit() and user_session.pending_action and user_session.pending_amount:
+        return _legacy_numeric_selection(message, user_id, user_session)
 
-    normalized = normalize_text(message)
-    if normalized in {'oi', 'olá', 'ola', 'hello', 'hi', 'ajuda', 'help', 'como funciona'}:
-        return CHAT_HELP_MESSAGE
-
-    # Check for explicit "adicionar" command
-    if normalized.startswith('adicionar'):
-        try:
-            amount = float(normalized.split()[1])
-            user_session.pending_action = 'add'
-            user_session.pending_amount = amount
-            user_session.pending_intent = None
+    if kind == 'undo' or (kind == 'reject' and not pending):
+        if kind == 'reject' and not pending:
+            last_transaction = Transaction.query.filter_by(user_id=user_id).order_by(
+                Transaction.timestamp.desc(), Transaction.id.desc()
+            ).first()
+            if re.search(r'\b(cancelar|cancela|desfazer|anular)\b', fold_chat(message or '')) and last_transaction:
+                db.session.delete(last_transaction)
+                db.session.commit()
+                return _chat_result('Desfiz o último lançamento.', user_id=user_id)
+        if kind == 'undo':
+            last_transaction = Transaction.query.filter_by(user_id=user_id).order_by(
+                Transaction.timestamp.desc(), Transaction.id.desc()
+            ).first()
+            if not last_transaction:
+                return _chat_result('Não há lançamento para desfazer.', user_id=user_id)
+            db.session.delete(last_transaction)
             db.session.commit()
-            user_categories = _get_user_categories(user_id)
-            cat_list = "\n".join([f"{i+1}. {cat.name}" for i, cat in enumerate(user_categories)])
-            return f"Em que categoria queres adicionar {amount:.2f}€?\n\n{cat_list}"
-        except (IndexError, ValueError):
-            return 'Formato incorreto. Exemplo: adicionar 400'
+            return _chat_result('Desfiz o último lançamento. O saldo já foi atualizado.', user_id=user_id)
 
-    # Check for explicit "remover" command
-    if normalized.startswith('remover'):
-        try:
-            amount = float(normalized.split()[1])
-            user_session.pending_action = 'remove'
-            user_session.pending_amount = amount
-            user_session.pending_intent = None
-            db.session.commit()
-            user_categories = _get_user_categories(user_id)
-            cat_list = "\n".join([f"{i+1}. {cat.name}" for i, cat in enumerate(user_categories)])
-            return f"Em que categoria queres remover {amount:.2f}€?\n\n{cat_list}"
-        except (IndexError, ValueError):
-            return 'Formato incorreto. Exemplo: remover 400'
-
-    # Undo/cancel last transaction (DO NOT ALTER)
-    if re.search(r'\b(desfazer|cancelar|undo|anular)\b', normalized):
-        last_transaction = Transaction.query.filter_by(user_id=user_id).order_by(Transaction.timestamp.desc(), Transaction.id.desc()).first()
-        if not last_transaction:
-            return 'Não há transações para desfazer.'
-        db.session.delete(last_transaction)
+    if kind == 'reject' and pending:
+        _save_pending(user_session, None)
         db.session.commit()
-        return '✅ Desfeita a última transação.'
+        return _chat_result('Beleza, não registrei nada.', user_id=user_id)
 
-    if message.isdigit() and user_session and user_session.selected_category:
-        category = Category.query.get(user_session.selected_category)
+    if kind == 'confirm' and pending.get('kind') == 'confirm':
+        saved = _commit_chat_transactions(user_id, pending.get('transactions') or [])
+        _save_pending(user_session, None)
+        db.session.commit()
+        if not saved:
+            return _chat_result('Não encontrei um lançamento para confirmar.', user_id=user_id)
+        lines = []
+        balances = {item['name']: item['balance'] for item in _category_balances(user_id)}
+        for item in saved:
+            kind_label = 'receita' if item['type'] == 'income' else 'despesa'
+            lines.append(
+                f'{item["emoji"]} {kind_label.capitalize()} de {_money(item["amount"])} em {item["category"]}. '
+                f'Saldo da categoria: {_money(balances.get(item["category"], 0))}.'
+            )
+        text = 'Pronto, registrei no seu extrato:\n\n' + '\n'.join(lines) + '\n\nO dashboard já mostra esses valores.'
+        return _chat_result(text, saved=saved, user_id=user_id)
+
+    if pending.get('kind') == 'choose_category' and kind not in {'transactions', 'help', 'undo'}:
+        chosen = (message or '').strip()
+        if chosen.isdigit():
+            index = int(chosen) - 1
+            if 0 <= index < len(user_categories):
+                chosen = user_categories[index].name
+            else:
+                return _chat_result('Não encontrei essa categoria. Escolhe um dos botões ou escreve o nome.', _category_suggestions(user_id), user_id=user_id)
+        if not chosen:
+            return _chat_result('Qual o nome da categoria?', _category_suggestions(user_id), user_id=user_id)
+        transactions = pending.get('transactions') or []
+        index = int(pending.get('index') or 0)
+        if 0 <= index < len(transactions):
+            transactions[index]['category'] = chosen.strip()
+        missing = next((i for i, tx in enumerate(transactions) if not tx.get('category')), None)
+        if missing is not None:
+            _save_pending(user_session, {'kind': 'choose_category', 'transactions': transactions, 'index': missing})
+            db.session.commit()
+            amount = transactions[missing].get('amount')
+            return _chat_result(
+                f'E os {_money(amount)} — em qual categoria?',
+                _category_suggestions(user_id),
+                user_id=user_id,
+            )
+        _save_pending(user_session, {'kind': 'confirm', 'transactions': transactions})
+        db.session.commit()
+        return _chat_result(
+            'Entendi assim:\n\n' + _describe_transactions(transactions) + '\n\nPosso registrar?',
+            CONFIRM_SUGGESTIONS,
+            user_id=user_id,
+        )
+
+    if kind == 'help':
+        return _chat_result(CHAT_HELP_MESSAGE, user_id=user_id)
+
+    if kind == 'transactions':
+        transactions = interpreted['transactions']
+        missing = next((i for i, tx in enumerate(transactions) if not tx.get('category')), None)
+        if missing is not None:
+            _save_pending(user_session, {'kind': 'choose_category', 'transactions': transactions, 'index': missing})
+            db.session.commit()
+            amount = transactions[missing].get('amount')
+            kind_label = 'receita' if transactions[missing].get('type') == 'income' else 'despesa'
+            if user_categories:
+                names = '\n'.join(f'{i + 1}. {cat.name}' for i, cat in enumerate(user_categories))
+                text = f'Anotei uma {kind_label} de {_money(amount)}. Em qual categoria?\n\n{names}\n\nOu escreva um nome novo.'
+            else:
+                text = f'Anotei uma {kind_label} de {_money(amount)}. Como você quer chamar essa categoria?'
+            return _chat_result(text, _category_suggestions(user_id), user_id=user_id)
+
+        _save_pending(user_session, {'kind': 'confirm', 'transactions': transactions})
+        db.session.commit()
+        return _chat_result(
+            'Entendi assim:\n\n' + _describe_transactions(transactions) + '\n\nPosso registrar no seu extrato?',
+            CONFIRM_SUGGESTIONS,
+            user_id=user_id,
+        )
+
+    return _chat_result(
+        'Não entendi o valor. Tenta algo como "gastei 45 no mercado" ou "recebi 2500 de salário".',
+        user_id=user_id,
+    )
+
+
+def _legacy_numeric_selection(message, user_id, user_session):
+    if user_session.selected_category:
+        category = db.session.get(Category, user_session.selected_category)
         if category:
             subcategories = list(category.subcategories)
-            if subcategories:
-                sub_index = int(message) - 1
-                if 0 <= sub_index < len(subcategories):
-                    selected_sub = subcategories[sub_index]
-                    action = user_session.pending_action
-                    amount = user_session.pending_amount
-                    transaction_type = 'income' if action == 'add' else 'expense'
-                    transaction = Transaction(
-                        user_id=user_id,
-                        category_id=category.id,
-                        subcategory_id=selected_sub.id,
-                        subcategory_name=selected_sub.name,
-                        amount=amount,
-                        type=transaction_type,
-                        timestamp=datetime.now(),
-                    )
-                    db.session.add(transaction)
-                    user_session.pending_action = None
-                    user_session.pending_amount = None
-                    user_session.selected_category = None
-                    db.session.commit()
-                    return f"✅ {amount:.2f}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_sub.name} ({category.name})!"
-
-    if message.isdigit() and user_session and user_session.pending_action and not user_session.selected_category:
-        cat_index = int(message) - 1
-        user_categories = _get_user_categories(user_id)
-        if 0 <= cat_index < len(user_categories):
-            selected_cat = user_categories[cat_index]
-            action = user_session.pending_action
-            amount = user_session.pending_amount
-            subcategories = list(selected_cat.subcategories)
-            if subcategories:
-                sub_list = "\n".join([f"{i+1}. {sub.name}" for i, sub in enumerate(subcategories)])
-                user_session.selected_category = selected_cat.id
+            sub_index = int(message) - 1
+            if 0 <= sub_index < len(subcategories):
+                selected_sub = subcategories[sub_index]
+                action = user_session.pending_action
+                amount = user_session.pending_amount
+                transaction = Transaction(
+                    user_id=user_id,
+                    category_id=category.id,
+                    subcategory_id=selected_sub.id,
+                    subcategory_name=selected_sub.name,
+                    amount=amount,
+                    type='income' if action == 'add' else 'expense',
+                    timestamp=datetime.now(),
+                )
+                db.session.add(transaction)
+                _save_pending(user_session, None)
                 db.session.commit()
-                return f"A categoria {selected_cat.name} tem subcategorias: {', '.join(sub.name for sub in subcategories)}.\nQual delas queres alterar?\n\n{sub_list}"
-
-            transaction_type = 'income' if action == 'add' else 'expense'
-            transaction = Transaction(
-                user_id=user_id,
-                category_id=selected_cat.id,
-                amount=amount,
-                type=transaction_type,
-                timestamp=datetime.now(),
-            )
-            db.session.add(transaction)
-            user_session.pending_action = None
-            user_session.pending_amount = None
-            user_session.pending_intent = None
+                return _chat_result(
+                    f'Registrei {_money(amount)} em {selected_sub.name} ({category.name}).',
+                    user_id=user_id,
+                )
+    cat_index = int(message) - 1
+    user_categories = _get_user_categories(user_id)
+    if 0 <= cat_index < len(user_categories):
+        selected_cat = user_categories[cat_index]
+        subcategories = list(selected_cat.subcategories)
+        action = user_session.pending_action
+        amount = user_session.pending_amount
+        if subcategories:
+            user_session.selected_category = selected_cat.id
             db.session.commit()
-            return f"✅ {amount:.2f}€ {'adicionado a' if action == 'add' else 'removido de'} {selected_cat.name}!"
+            sub_list = '\n'.join(f'{i + 1}. {sub.name}' for i, sub in enumerate(subcategories))
+            return _chat_result(
+                f'{selected_cat.name} tem subcategorias. Qual delas?\n\n{sub_list}',
+                [{'label': sub.name, 'message': str(i + 1)} for i, sub in enumerate(subcategories)],
+                user_id=user_id,
+            )
+        transaction = Transaction(
+            user_id=user_id,
+            category_id=selected_cat.id,
+            amount=amount,
+            type='income' if action == 'add' else 'expense',
+            timestamp=datetime.now(),
+        )
+        db.session.add(transaction)
+        _save_pending(user_session, None)
+        db.session.commit()
+        return _chat_result(
+            f'Registrei {_money(amount)} em {selected_cat.name}.',
+            user_id=user_id,
+        )
+    return _chat_result('Não encontrei essa opção.', user_id=user_id)
 
-    return 'Comando não reconhecido. Escreve "adicionar" ou "remover" seguido do valor em €.'
+init_database()
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5004)
+    app.run(host='0.0.0.0', port=5004, debug=False)
