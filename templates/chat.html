@@ -23,7 +23,7 @@
                 {% else %}
                     {% for msg in chat_history %}
                     <div class="chat-message {{ msg.sender }}">
-                        {{ msg.message|e|replace('\n', '<br>')|safe }}
+                        {% for line in msg.message.split('\n') %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}
                     </div>
                     {% endfor %}
                 {% endif %}
